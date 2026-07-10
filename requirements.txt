@@ -1,0 +1,7 @@
+flask
+yfinance
+pandas
+requests
+feedparser
+beautifulsoup4
+gunicorn

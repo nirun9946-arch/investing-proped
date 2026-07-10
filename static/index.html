@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📈 Investing Pro</title>
+<style>
+  :root{
+    --bg:#0d1117; --card:#161b22; --card2:#1c2330; --border:#2d3646;
+    --text:#e6edf3; --muted:#8b949e;
+    --green:#3fb950; --green-bg:rgba(63,185,80,.12);
+    --red:#f85149; --red-bg:rgba(248,81,73,.12);
+    --yellow:#d29922; --yellow-bg:rgba(210,153,34,.12);
+    --blue:#58a6ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',Tahoma,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+  header{position:sticky;top:0;z-index:10;background:rgba(13,17,23,.92);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--border);padding:14px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  header h1{font-size:1.25rem;font-weight:700}
+  header h1 span{color:var(--blue)}
+  .spacer{flex:1}
+  .addbox{display:flex;gap:8px}
+  .addbox input{background:var(--card);border:1px solid var(--border);color:var(--text);
+    border-radius:8px;padding:9px 12px;width:170px;font-size:.95rem;outline:none}
+  .addbox input:focus{border-color:var(--blue)}
+  button{border:none;border-radius:8px;padding:9px 16px;font-size:.95rem;cursor:pointer;font-weight:600;transition:.15s}
+  .btn-blue{background:var(--blue);color:#0d1117}
+  .btn-blue:hover{filter:brightness(1.15)}
+  .btn-green{background:var(--green);color:#0d1117}
+  .btn-green:hover{filter:brightness(1.15)}
+  .btn-green:disabled{opacity:.5;cursor:wait}
+  #summary{display:flex;gap:10px;padding:16px 22px 0;flex-wrap:wrap}
+  .pill{border-radius:20px;padding:6px 16px;font-size:.9rem;font-weight:600;border:1px solid var(--border)}
+  .pill.buy{color:var(--green);background:var(--green-bg)}
+  .pill.sell{color:var(--red);background:var(--red-bg)}
+  .pill.hold{color:var(--yellow);background:var(--yellow-bg)}
+  .pill.time{color:var(--muted)}
+  #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:16px;padding:16px 22px 40px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;position:relative;
+    animation:fadeIn .3s ease}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1}}
+  .card .del{position:absolute;top:10px;right:12px;background:none;color:var(--muted);font-size:1rem;padding:4px 8px}
+  .card .del:hover{color:var(--red)}
+  .tk{font-size:1.3rem;font-weight:800;letter-spacing:.5px}
+  .price{font-size:1.6rem;font-weight:700;margin-top:2px}
+  .chg{font-size:1rem;font-weight:600;margin-left:8px}
+  .up{color:var(--green)} .down{color:var(--red)}
+  .verdict{display:inline-block;margin-top:10px;padding:6px 14px;border-radius:8px;font-weight:700;font-size:.95rem}
+  .v-buy{background:var(--green-bg);color:var(--green);border:1px solid var(--green)}
+  .v-sell{background:var(--red-bg);color:var(--red);border:1px solid var(--red)}
+  .v-hold{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow)}
+  .conf{font-size:.82rem;color:var(--muted);margin-left:8px}
+  .meter{height:8px;background:var(--card2);border-radius:4px;margin:12px 0;position:relative;overflow:hidden}
+  .meter i{position:absolute;top:0;bottom:0;border-radius:4px}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin:10px 0;font-size:.88rem}
+  .stats b{color:var(--text)} .stats span{color:var(--muted)}
+  .sigs{margin-top:10px;border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:5px}
+  .sig{font-size:.84rem;display:flex;gap:7px;align-items:flex-start;line-height:1.45}
+  .sig .ic{flex:none;font-weight:700}
+  .skeleton{height:290px;border-radius:14px;background:linear-gradient(110deg,var(--card) 30%,var(--card2) 50%,var(--card) 70%);
+    background-size:200% 100%;animation:shimmer 1.4s infinite;border:1px solid var(--border);
+    display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:600}
+  @keyframes shimmer{to{background-position:-200% 0}}
+  .err{border-color:var(--red)}
+  .rsi-tag{padding:2px 8px;border-radius:6px;font-weight:700}
+  .rsi-ob{background:var(--red-bg);color:var(--red)}
+  .rsi-os{background:var(--green-bg);color:var(--green)}
+  .mkt{font-size:.78rem;padding:3px 10px;border-radius:12px;margin-left:10px;vertical-align:middle;
+    border:1px solid var(--border);color:var(--muted);font-weight:600}
+  .mkt.open{color:var(--green);border-color:var(--green);background:var(--green-bg)}
+  .val{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--card2);font-size:.85rem;line-height:1.5}
+  .val .vlbl{font-weight:800;padding:2px 10px;border-radius:6px;margin-right:8px}
+  .vl-cheap{background:var(--green-bg);color:var(--green)}
+  .vl-fair{background:rgba(88,166,255,.12);color:var(--blue)}
+  .vl-exp{background:var(--yellow-bg);color:var(--yellow)}
+  .vl-vexp{background:var(--red-bg);color:var(--red)}
+  .vl-na{background:var(--card);color:var(--muted)}
+  .val .vdesc{color:var(--muted)}
+  .ext{font-size:.85rem;margin-top:4px;color:var(--muted)}
+  .ext b{font-weight:700}
+  .advice{margin-top:10px;padding:12px 14px;border-radius:10px;font-size:.86rem;line-height:1.55;border:1px solid}
+  .advice .albl{font-weight:800;font-size:.98rem;display:block;margin-bottom:6px}
+  .ad-buy{background:var(--green-bg);border-color:var(--green)}
+  .ad-buy .albl{color:var(--green)}
+  .ad-warn{background:var(--yellow-bg);border-color:var(--yellow)}
+  .ad-warn .albl{color:var(--yellow)}
+  .ad-wait{background:rgba(88,166,255,.08);border-color:var(--blue)}
+  .ad-wait .albl{color:var(--blue)}
+  .ad-avoid{background:var(--red-bg);border-color:var(--red)}
+  .ad-avoid .albl{color:var(--red)}
+  .advice ul{margin:0 0 6px 18px;color:var(--text)}
+  .advice li{margin-bottom:3px}
+  .advice .plan{color:var(--muted);border-top:1px dashed var(--border);padding-top:6px;margin-top:6px}
+  .tabs{display:flex;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:4px}
+  .tab{background:none;color:var(--muted);padding:7px 18px;border-radius:7px;font-weight:700}
+  .tab.active{background:var(--blue);color:#0d1117}
+  #page-news{padding:16px 22px 40px;max-width:900px;margin:0 auto}
+  .news-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .news-head .nupd{color:var(--muted);font-size:.85rem}
+  .nitem{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:12px;
+    animation:fadeIn .3s ease}
+  .nitem .nmeta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:.78rem}
+  .nsrc{padding:3px 10px;border-radius:12px;font-weight:700;background:rgba(88,166,255,.12);color:var(--blue)}
+  .nsrc.cnbc{background:var(--red-bg);color:var(--red)}
+  .ntick{padding:3px 10px;border-radius:12px;font-weight:800;background:var(--green-bg);color:var(--green)}
+  .ntime{color:var(--muted)}
+  .nitem .tth{font-size:1.02rem;font-weight:700;line-height:1.5}
+  .nitem .ten{color:var(--muted);font-size:.82rem;margin-top:4px;line-height:1.4}
+  .nitem .nsum{font-size:.88rem;color:var(--text);opacity:.85;margin-top:8px;line-height:1.55}
+  .nitem a{color:var(--blue);font-size:.84rem;text-decoration:none;display:inline-block;margin-top:8px}
+  .nitem a:hover{text-decoration:underline}
+  .news-loading{text-align:center;color:var(--muted);padding:50px 0;font-size:1rem}
+  .nbtns{display:flex;gap:12px;margin-top:8px;flex-wrap:wrap;align-items:center}
+  .nbtns .tr-btn{background:var(--card2);border:1px solid var(--border);color:var(--blue);
+    padding:6px 12px;border-radius:8px;font-size:.84rem;font-weight:600}
+  .nbtns .tr-btn:hover{border-color:var(--blue)}
+  .fulltxt{margin-top:12px;border-top:1px solid var(--border);padding-top:12px;font-size:.9rem;line-height:1.7}
+  .fulltxt p{margin-bottom:10px}
+  .fulltxt .ft-err{color:var(--yellow)}
+  #page-insider{padding:16px 22px 40px;max-width:900px;margin:0 auto}
+  .ins-note{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;
+    font-size:.85rem;color:var(--muted);line-height:1.6;margin-bottom:14px}
+  .ins-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 18px;
+    margin-bottom:10px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;animation:fadeIn .3s ease}
+  .ins-act{padding:4px 14px;border-radius:8px;font-weight:800;font-size:.9rem;flex:none}
+  .ia-buy{background:var(--green-bg);color:var(--green);border:1px solid var(--green)}
+  .ia-sell{background:var(--red-bg);color:var(--red);border:1px solid var(--red)}
+  .ia-other{background:var(--card2);color:var(--muted);border:1px solid var(--border)}
+  .ins-body{flex:1;min-width:200px}
+  .ins-who{font-weight:700}
+  .ins-pos{color:var(--muted);font-size:.83rem}
+  .ins-num{text-align:right;font-size:.86rem;color:var(--muted)}
+  .ins-num b{color:var(--text);font-size:.95rem}
+  #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--card2);
+    border:1px solid var(--border);padding:12px 22px;border-radius:10px;display:none;z-index:99;font-weight:600}
+  @media(max-width:640px){ header{padding:12px} .addbox input{width:120px} #grid{padding:12px;grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📈 Investing <span>Pro</span></h1>
+  <nav class="tabs">
+    <button class="tab active" id="tab-stocks" onclick="switchPage('stocks')">📊 หุ้น</button>
+    <button class="tab" id="tab-news" onclick="switchPage('news')">📰 ข่าว</button>
+    <button class="tab" id="tab-insider" onclick="switchPage('insider')">🕵️ วงใน</button>
+  </nav>
+  <div class="spacer"></div>
+  <div class="addbox">
+    <input id="newTicker" placeholder="เพิ่มหุ้น เช่น NVDA, PTT.BK" onkeydown="if(event.key==='Enter')addTicker()">
+    <button class="btn-blue" onclick="addTicker()">＋ เพิ่ม</button>
+  </div>
+  <button class="btn-green" id="scanBtn" onclick="scanAll()">🔄 สแกนทั้งหมด</button>
+</header>
+
+<div id="summary"></div>
+<div id="grid"></div>
+
+<div id="page-news" style="display:none">
+  <div class="news-head">
+    <button class="btn-blue" id="newsBtn" onclick="loadNews(true)">🔄 รีเฟรชข่าว</button>
+    <span class="nupd" id="newsUpd"></span>
+    <span class="nupd">อัปเดตอัตโนมัติทุก 5 นาที · แปลไทยโดยอัตโนมัติ</span>
+  </div>
+  <div id="newsList"><div class="news-loading">⏳ กำลังโหลดข่าว...</div></div>
+</div>
+
+<div id="page-insider" style="display:none">
+  <div class="news-head">
+    <button class="btn-blue" id="insBtn" onclick="loadInsider(true)">🔄 รีเฟรชข้อมูลวงใน</button>
+    <span class="nupd">ข้อมูลจากรายงาน SEC (Form 4) ผ่าน OpenInsider — เฉพาะหุ้นสหรัฐ</span>
+  </div>
+  <div class="ins-note">
+    💡 <b>วิธีอ่าน:</b> ผู้บริหาร<b style="color:var(--green)">ซื้อ</b>หุ้นตัวเองมักเป็นสัญญาณความเชื่อมั่น ·
+    การ<b style="color:var(--red)">ขาย</b>ไม่ได้แย่เสมอไป (อาจขายเพื่อภาษี กระจายความเสี่ยง หรือใช้สิทธิ์ออปชันตามแผน)
+    แต่ถ้าผู้บริหารหลายคนขายพร้อมกันจำนวนมาก ควรระวังเป็นพิเศษ
+  </div>
+  <div id="insList"><div class="news-loading">⏳ กำลังโหลด...</div></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const grid = document.getElementById('grid');
+const summary = document.getElementById('summary');
+let results = {};
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(t._h); t._h = setTimeout(()=> t.style.display='none', 3200);
+}
+
+function verdictClass(v){
+  if(v.includes('BUY')) return 'v-buy';
+  if(v.includes('SELL')) return 'v-sell';
+  return 'v-hold';
+}
+function verdictThai(v){
+  const m = {'STRONG BUY SIGNAL':'🟢 สัญญาณซื้อแรง','BUY / ACCUMULATE':'🟢 ซื้อ/ทยอยสะสม',
+    'HOLD / WAIT':'⚪ ถือ/รอดูจังหวะ','SELL / REDUCE':'🔴 ขาย/ลดพอร์ต','STRONG SELL SIGNAL':'🔴 สัญญาณขายแรง'};
+  return m[v] || v;
+}
+const fmt = (n, d=2) => n==null ? '-' : Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+
+function card(r){
+  if(r.error) return `<div class="card err"><div class="tk">${r.ticker}</div>
+    <p style="color:var(--red);margin-top:10px;font-size:.9rem">❌ ${r.error}</p>
+    <button class="del" onclick="removeTicker('${r.ticker}')">✕</button></div>`;
+
+  const up = r.change_pct >= 0;
+  const score = r.score, maxBar = 10;
+  const pct = Math.min(Math.abs(score)/maxBar*50, 50);
+  const barColor = score > 0 ? 'var(--green)' : score < 0 ? 'var(--red)' : 'var(--muted)';
+  const barStyle = score >= 0
+    ? `left:50%;width:${pct}%;background:${barColor}`
+    : `right:50%;width:${pct}%;background:${barColor}`;
+  let rsiTag = '';
+  if(r.rsi >= 70) rsiTag = '<span class="rsi-tag rsi-ob">Overbought</span>';
+  else if(r.rsi <= 30) rsiTag = '<span class="rsi-tag rsi-os">Oversold</span>';
+
+  const mktMap = {REGULAR:['🟢 ตลาดเปิด','open'], CLOSED:['🌙 ตลาดปิด',''],
+    PRE:['🌅 ก่อนเปิดตลาด',''], POST:['🌆 หลังปิดตลาด','']};
+  const mk = mktMap[r.market_state] || null;
+  const mktTag = mk ? `<span class="mkt ${mk[1]}">${mk[0]}</span>` : '';
+
+  const vClassMap = {'ถูก':'vl-cheap','เหมาะสม':'vl-fair','ค่อนข้างแพง':'vl-exp','แพง':'vl-vexp'};
+  const vClass = vClassMap[r.value_label] || 'vl-na';
+  const peShow = r.fwd_pe ?? r.pe;
+  const peLine = r.pe != null || r.fwd_pe != null
+    ? `P/E <b>${r.pe!=null?fmt(r.pe,1):'-'}</b>${r.fwd_pe!=null?` · Fwd <b>${fmt(r.fwd_pe,1)}</b>`:''}`
+    : `P/E <b>-</b>`;
+  const valBlock = `<div class="val">
+      <span class="vlbl ${vClass}">💰 ${r.value_label==='N/A'?'ประเมินไม่ได้':r.value_label}</span>${peLine}
+      <div class="vdesc">${r.value_desc||''}</div>
+    </div>`;
+
+  let extLines = '';
+  if(r.pre_price != null){
+    const pu = r.pre_chg >= 0;
+    extLines += `<div class="ext">🌅 ก่อนเปิดตลาด: <b>${fmt(r.pre_price)}</b> <span class="${pu?'up':'down'}">${pu?'+':''}${fmt(r.pre_chg)}%</span></div>`;
+  }
+  if(r.post_price != null){
+    const pu = r.post_chg >= 0;
+    extLines += `<div class="ext">🌙 หลังปิด/ข้ามคืน: <b>${fmt(r.post_price)}</b> <span class="${pu?'up':'down'}">${pu?'+':''}${fmt(r.post_chg)}%</span></div>`;
+  }
+
+  const adviceBlock = r.advice_label ? `<div class="advice ad-${r.advice_tone}">
+      <span class="albl">💡 ควรซื้อไหม? → ${r.advice_label}</span>
+      <ul>${(r.advice_reasons||[]).map(x=>`<li>${x}</li>`).join('')}</ul>
+      <div class="plan">📋 ${r.advice_plan||''}</div>
+    </div>` : '';
+
+  const sigs = r.signals.filter(s=>s.weight>=1).map(s=>
+    `<div class="sig"><span class="ic ${s.dir==='bull'?'up':'down'}">${s.dir==='bull'?'▲':'▼'}</span><span>${s.desc}</span></div>`
+  ).join('');
+
+  return `<div class="card">
+    <button class="del" title="ลบออกจาก watchlist" onclick="removeTicker('${r.ticker}')">✕</button>
+    <div class="tk">${r.ticker}${mktTag}</div>
+    <div class="price">${fmt(r.price)}<span class="chg ${up?'up':'down'}">${up?'+':''}${fmt(r.change_pct)}%</span></div>
+    ${extLines}
+    <div><span class="verdict ${verdictClass(r.verdict)}">${verdictThai(r.verdict)}</span>
+      <span class="conf">score ${score>0?'+':''}${score} · มั่นใจ ${Math.round(r.confidence)}%</span></div>
+    <div class="meter"><i style="${barStyle}"></i></div>
+    <div class="stats">
+      <div><span>ปิดก่อนหน้า:</span> <b>${fmt(r.prev_close)}</b></div>
+      <div><span>กรอบ 52 สัปดาห์:</span> <b>${fmt(r.w52l)} – ${fmt(r.w52h)}</b></div>
+      <div><span>RSI(14):</span> <b>${fmt(r.rsi,1)}</b> ${rsiTag}</div>
+      <div><span>วอลุ่ม:</span> <b>${fmt(r.vol_ratio)}x</b></div>
+      <div><span>แนวรับ:</span> <b class="up">${fmt(r.support)}</b></div>
+      <div><span>แนวต้าน:</span> <b class="down">${fmt(r.resistance)}</b></div>
+      <div><span>ตัดขาดทุน:</span> <b>${fmt(r.stop_suggest)}</b></div>
+      <div><span>เป้าหมาย:</span> <b>${fmt(r.target_suggest)}</b></div>
+    </div>
+    ${valBlock}
+    ${adviceBlock}
+    <div class="sigs">${sigs}</div>
+  </div>`;
+}
+
+function renderSummary(){
+  const rs = Object.values(results).filter(r=>!r.error);
+  if(!rs.length){ summary.innerHTML=''; return; }
+  const buy = rs.filter(r=>r.verdict.includes('BUY')).length;
+  const sell = rs.filter(r=>r.verdict.includes('SELL')).length;
+  const hold = rs.length - buy - sell;
+  summary.innerHTML = `
+    <span class="pill buy">🟢 ซื้อ ${buy}</span>
+    <span class="pill hold">⚪ ถือ/รอ ${hold}</span>
+    <span class="pill sell">🔴 ขาย ${sell}</span>
+    <span class="pill time">อัปเดตล่าสุด ${new Date().toLocaleTimeString('th-TH')}</span>`;
+}
+
+function render(){
+  const order = Object.values(results).sort((a,b)=>(b.score??-99)-(a.score??-99));
+  grid.innerHTML = order.map(card).join('');
+  renderSummary();
+}
+
+async function scanAll(){
+  const btn = document.getElementById('scanBtn');
+  btn.disabled = true; btn.textContent = '⏳ กำลังสแกน...';
+  const list = await (await fetch('/api/watchlist')).json();
+  results = {};
+  grid.innerHTML = list.map(t=>`<div class="skeleton" id="sk-${t}">${t} …</div>`).join('');
+  summary.innerHTML = '';
+  await Promise.all(list.map(async t=>{
+    try{
+      const r = await (await fetch('/api/analyze/'+encodeURIComponent(t))).json();
+      results[t] = r;
+    }catch(e){ results[t] = {ticker:t, error:'โหลดไม่สำเร็จ'}; }
+    const sk = document.getElementById('sk-'+CSS.escape(t).replace(/\\/g,''));
+    render();
+  }));
+  render();
+  btn.disabled = false; btn.textContent = '🔄 สแกนทั้งหมด';
+}
+
+async function addTicker(){
+  const inp = document.getElementById('newTicker');
+  const tk = inp.value.trim().toUpperCase();
+  if(!tk) return;
+  const res = await fetch('/api/watchlist',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ticker:tk})});
+  const j = await res.json();
+  if(!res.ok){ toast('❌ ' + j.error); return; }
+  inp.value = '';
+  toast('✅ เพิ่ม ' + tk + ' แล้ว');
+  try{
+    const r = await (await fetch('/api/analyze/'+encodeURIComponent(tk))).json();
+    results[tk] = r; render();
+  }catch(e){}
+}
+
+async function removeTicker(tk){
+  if(!confirm('ลบ ' + tk + ' ออกจาก watchlist?')) return;
+  await fetch('/api/watchlist/'+encodeURIComponent(tk),{method:'DELETE'});
+  delete results[tk]; render();
+  toast('🗑 ลบ ' + tk + ' แล้ว');
+}
+
+// ================= หน้าข่าว =================
+let newsLoaded = false;
+
+let insiderLoaded = false;
+
+function switchPage(page){
+  document.getElementById('summary').style.display = page==='stocks' ? 'flex' : 'none';
+  document.getElementById('grid').style.display = page==='stocks' ? 'grid' : 'none';
+  document.getElementById('page-news').style.display = page==='news' ? 'block' : 'none';
+  document.getElementById('page-insider').style.display = page==='insider' ? 'block' : 'none';
+  ['stocks','news','insider'].forEach(p=>
+    document.getElementById('tab-'+p).classList.toggle('active', p===page));
+  if(page==='news' && !newsLoaded) loadNews(false);
+  if(page==='insider' && !insiderLoaded) loadInsider(false);
+}
+
+function timeAgo(ts){
+  if(!ts) return '';
+  const m = Math.floor((Date.now()/1000 - ts) / 60);
+  if(m < 1) return 'เมื่อสักครู่';
+  if(m < 60) return `${m} นาทีที่แล้ว`;
+  const h = Math.floor(m/60);
+  if(h < 24) return `${h} ชม.ที่แล้ว`;
+  return `${Math.floor(h/24)} วันที่แล้ว`;
+}
+
+function newsItem(n, idx){
+  const srcCls = n.source.toLowerCase().includes('cnbc') ? 'nsrc cnbc' : 'nsrc';
+  const tick = n.ticker ? `<span class="ntick">${n.ticker}</span>` : '';
+  const showEn = n.title_th && n.title_th !== n.title;
+  const gtUrl = 'https://translate.google.com/translate?sl=auto&tl=th&u=' + encodeURIComponent(n.link);
+  return `<div class="nitem">
+    <div class="nmeta"><span class="${srcCls}">${n.source}</span>${tick}<span class="ntime">🕐 ${timeAgo(n.ts)}</span></div>
+    <div class="tth">${n.title_th || n.title}</div>
+    ${showEn ? `<div class="ten">${n.title}</div>` : ''}
+    ${n.summary_th ? `<div class="nsum">${n.summary_th}</div>` : ''}
+    <div class="nbtns">
+      <button class="tr-btn" id="trb-${idx}" onclick="translateFull(${idx}, '${encodeURIComponent(n.link)}')">🇹🇭 แปลไทยทั้งข่าว</button>
+      <a href="${gtUrl}" target="_blank" rel="noopener">เปิดผ่าน Google Translate ↗</a>
+      <a href="${n.link}" target="_blank" rel="noopener">อ่านต้นฉบับ ↗</a>
+    </div>
+    <div class="fulltxt" id="ft-${idx}" style="display:none"></div>
+  </div>`;
+}
+
+async function translateFull(idx, encUrl){
+  const box = document.getElementById('ft-'+idx);
+  const btn = document.getElementById('trb-'+idx);
+  if(box.style.display === 'block'){ box.style.display='none'; btn.textContent='🇹🇭 แปลไทยทั้งข่าว'; return; }
+  box.style.display = 'block';
+  box.innerHTML = '<p style="color:var(--muted)">⏳ กำลังดึงเนื้อหาและแปลไทย... (~10-20 วินาที)</p>';
+  btn.disabled = true; btn.textContent = '⏳ กำลังแปล...';
+  try{
+    const r = await fetch('/api/article?url=' + encUrl);
+    const j = await r.json();
+    if(j.ok && j.paragraphs && j.paragraphs.length){
+      box.innerHTML = j.paragraphs.map(p=>`<p>${p}</p>`).join('') +
+        '<p style="color:var(--muted);font-size:.78rem">⚠️ แปลอัตโนมัติ — ความหมายอาจคลาดเคลื่อน ตรวจสอบต้นฉบับก่อนตัดสินใจสำคัญ</p>';
+      btn.textContent = '🔼 ซ่อนคำแปล';
+    } else {
+      box.innerHTML = `<p class="ft-err">⚠️ ${j.error || 'แปลไม่สำเร็จ'} — กดปุ่ม "เปิดผ่าน Google Translate" แทนได้ครับ</p>`;
+      btn.textContent = '🇹🇭 แปลไทยทั้งข่าว';
+    }
+  }catch(e){
+    box.innerHTML = '<p class="ft-err">⚠️ เกิดข้อผิดพลาด — ลองใหม่หรือใช้ Google Translate แทน</p>';
+    btn.textContent = '🇹🇭 แปลไทยทั้งข่าว';
+  }
+  btn.disabled = false;
+}
+
+function insiderItem(it){
+  const cls = it.action==='buy' ? 'ia-buy' : it.action==='sell' ? 'ia-sell' : 'ia-other';
+  const icon = it.action==='buy' ? '🟢' : it.action==='sell' ? '🔴' : '⚪';
+  const shares = it.shares ? Number(it.shares).toLocaleString() + ' หุ้น' : '';
+  const value = it.value ? '$' + Number(it.value).toLocaleString() : '';
+  return `<div class="ins-item">
+    <span class="ntick">${it.ticker}</span>
+    <span class="ins-act ${cls}">${icon} ${it.action_th}</span>
+    <div class="ins-body">
+      <div class="ins-who">${it.insider}</div>
+      <div class="ins-pos">${it.position}</div>
+    </div>
+    <div class="ins-num"><b>${value || shares || '-'}</b><br>${value && shares ? shares + ' · ' : ''}${it.date}</div>
+  </div>`;
+}
+
+async function loadInsider(force){
+  const btn = document.getElementById('insBtn');
+  btn.disabled = true; btn.textContent = '⏳ กำลังโหลด...';
+  if(!insiderLoaded) document.getElementById('insList').innerHTML =
+    '<div class="news-loading">⏳ กำลังดึงข้อมูลการซื้อขายของผู้บริหาร...</div>';
+  try{
+    const r = await fetch('/api/insider' + (force ? '?refresh=1' : ''));
+    const j = await r.json();
+    if(j.items && j.items.length){
+      document.getElementById('insList').innerHTML = j.items.map(insiderItem).join('');
+      insiderLoaded = true;
+    } else {
+      document.getElementById('insList').innerHTML =
+        '<div class="news-loading">ไม่พบรายการซื้อขายของผู้บริหารในหุ้น watchlist ช่วงล่าสุด</div>';
+    }
+  }catch(e){
+    document.getElementById('insList').innerHTML =
+      '<div class="news-loading">❌ โหลดไม่สำเร็จ — ลองกดรีเฟรชอีกครั้ง</div>';
+  }
+  btn.disabled = false; btn.textContent = '🔄 รีเฟรชข้อมูลวงใน';
+}
+
+async function loadNews(force){
+  const btn = document.getElementById('newsBtn');
+  btn.disabled = true; btn.textContent = '⏳ กำลังโหลด...';
+  if(!newsLoaded) document.getElementById('newsList').innerHTML =
+    '<div class="news-loading">⏳ กำลังดึงข่าวและแปลไทย... (ครั้งแรกใช้เวลา ~20 วินาที)</div>';
+  try{
+    const r = await fetch('/api/news' + (force ? '?refresh=1' : ''));
+    const j = await r.json();
+    if(j.items && j.items.length){
+      document.getElementById('newsList').innerHTML = j.items.map(newsItem).join('');
+      document.getElementById('newsUpd').textContent =
+        'อัปเดตล่าสุด ' + new Date((j.updated||Date.now()/1000)*1000).toLocaleTimeString('th-TH');
+      newsLoaded = true;
+    } else {
+      document.getElementById('newsList').innerHTML =
+        '<div class="news-loading">❌ โหลดข่าวไม่สำเร็จ — ลองกดรีเฟรชอีกครั้ง</div>';
+    }
+  }catch(e){
+    document.getElementById('newsList').innerHTML =
+      '<div class="news-loading">❌ โหลดข่าวไม่สำเร็จ — ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่</div>';
+  }
+  btn.disabled = false; btn.textContent = '🔄 รีเฟรชข่าว';
+}
+
+// รีเฟรชข่าวอัตโนมัติทุก 5 นาที (เมื่ออยู่หน้าข่าว)
+setInterval(()=>{
+  if(document.getElementById('page-news').style.display !== 'none') loadNews(false);
+}, 300000);
+
+scanAll();
+</script>
+</body>
+</html>

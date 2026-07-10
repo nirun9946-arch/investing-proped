@@ -1,0 +1,33 @@
+{
+  "watchlist": [
+    "PLTR",
+    "IREN",
+    "RKLB",
+    "QQQM",
+    "SLV",
+    "ASTS",
+    "AXTI",
+    "LITE",
+    "DRAM",
+    "MU",
+    "CHPY",
+    "INTC",
+    "WDC",
+    "STX",
+    "NVDA"
+  ],
+  "settings": {
+    "period": "1y",
+    "interval": "1d",
+    "rsi_oversold": 30,
+    "rsi_overbought": 70,
+    "volume_spike_factor": 2.0,
+    "watch_interval_minutes": 30,
+    "min_alert_score": 3
+  },
+  "notify": {
+    "windows_toast": true,
+    "telegram_bot_token": "",
+    "telegram_chat_id": ""
+  }
+}
