@@ -23,7 +23,9 @@ FEEDS = [
     ("MarketWatch", "https://feeds.content.dowjones.io/public/rss/mw_topstories"),
 ]
 
-_cache = {"ts": 0, "items": []}
+_feed_cache = {"ts": 0, "items": []}   # ข่าว RSS (ใช้ร่วมกันทุกคน)
+_yahoo_cache = {}                       # ข่าวรายหุ้น: ticker -> (ts, rows)
+_tr_cache = {}                          # คำแปล: en -> th
 CACHE_SECONDS = 300  # เก็บผล 5 นาที
 
 
@@ -36,6 +38,8 @@ def translate_th(text):
     """แปลอังกฤษ→ไทย ผ่าน Google Translate (ไม่ต้องใช้ API key)"""
     if not text:
         return ""
+    if text in _tr_cache:
+        return _tr_cache[text]
     try:
         r = requests.get(
             "https://translate.googleapis.com/translate_a/single",
@@ -43,7 +47,11 @@ def translate_th(text):
             timeout=12,
         )
         segs = r.json()[0] or []
-        return "".join(s[0] for s in segs if s and s[0]).strip()
+        result = "".join(s[0] for s in segs if s and s[0]).strip()
+        if len(_tr_cache) > 800:
+            _tr_cache.clear()
+        _tr_cache[text] = result
+        return result
     except Exception:
         return ""
 
@@ -72,13 +80,12 @@ def fetch_feed(name, url):
         return []
 
 
-def fetch_yahoo_watchlist(tickers):
-    """ข่าวรายตัวของหุ้นใน watchlist จาก Yahoo Finance"""
+def fetch_yahoo_one(t):
+    """ข่าวรายตัวของหุ้นหนึ่งตัวจาก Yahoo Finance"""
     import yfinance as yf
     out = []
-    for t in tickers[:12]:
-        try:
-            for n in (yf.Ticker(t).news or [])[:3]:
+    try:
+        for n in (yf.Ticker(t).news or [])[:3]:
                 c = n.get("content", n) or n
                 title = clean(c.get("title"))
                 link = ((c.get("canonicalUrl") or {}).get("url")
@@ -105,22 +112,39 @@ def fetch_yahoo_watchlist(tickers):
                     "ts": ts,
                     "ticker": t,
                 })
-        except Exception:
-            continue
+    except Exception:
+        pass
     return out
 
 
 def get_news(tickers, max_items=30, force=False):
+    """รวมข่าว RSS (แคชร่วม) + ข่าวรายหุ้นตาม watchlist ของผู้ใช้แต่ละคน (แคชรายตัว)"""
     now = time.time()
-    if not force and _cache["items"] and now - _cache["ts"] < CACHE_SECONDS:
-        return _cache["items"]
+    tickers = [t.upper() for t in tickers][:15]
 
-    items = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
-        futs = [ex.submit(fetch_feed, n, u) for n, u in FEEDS]
-        futs.append(ex.submit(fetch_yahoo_watchlist, tickers))
-        for f in futs:
-            items.extend(f.result())
+    # 1) ข่าว RSS ส่วนกลาง
+    if force or not _feed_cache["items"] or now - _feed_cache["ts"] >= CACHE_SECONDS:
+        feed_items = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+            for rows in ex.map(lambda f: fetch_feed(*f), FEEDS):
+                feed_items.extend(rows)
+        _feed_cache["ts"], _feed_cache["items"] = now, feed_items
+
+    # 2) ข่าวรายหุ้น — ดึงเฉพาะตัวที่แคชหมดอายุ
+    need = [t for t in tickers
+            if force or t not in _yahoo_cache or now - _yahoo_cache[t][0] >= CACHE_SECONDS]
+    if need:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+            for t, rows in zip(need, ex.map(fetch_yahoo_one, need)):
+                _yahoo_cache[t] = (now, rows)
+    if len(_yahoo_cache) > 200:
+        for k in sorted(_yahoo_cache, key=lambda k: _yahoo_cache[k][0])[:100]:
+            _yahoo_cache.pop(k, None)
+
+    items = list(_feed_cache["items"])
+    for t in tickers:
+        if t in _yahoo_cache:
+            items.extend(_yahoo_cache[t][1])
 
     # เรียงใหม่สุดก่อน + ตัดข่าวซ้ำ (หัวข้อเหมือนกัน)
     seen, uniq = set(), []
@@ -132,17 +156,15 @@ def get_news(tickers, max_items=30, force=False):
         uniq.append(it)
     uniq = uniq[:max_items]
 
-    # แปลไทยแบบขนาน (เร็ว) — แปลไม่ได้ก็แสดงต้นฉบับ
+    # แปลไทยแบบขนาน (มีแคชคำแปล — ข่าวเดิมไม่แปลซ้ำ)
     def tr(it):
+        it = dict(it)
         it["title_th"] = translate_th(it["title"]) or it["title"]
         it["summary_th"] = translate_th(it["summary"]) if it["summary"] else ""
         return it
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
         uniq = list(ex.map(tr, uniq))
-
-    _cache["ts"] = now
-    _cache["items"] = uniq
     return uniq
 
 
@@ -206,7 +228,7 @@ def fetch_article_th(url):
 # ----------------------------------------------------------------------
 # ข่าววงใน: ผู้บริหารซื้อ/ขายหุ้น (SEC Form 4 ผ่าน OpenInsider)
 # ----------------------------------------------------------------------
-_insider_cache = {"ts": 0, "items": []}
+_insider_cache = {}  # ticker -> (ts, rows)
 
 _POSITION_TH = {
     "chief executive officer": "ซีอีโอ", "ceo": "ซีอีโอ",
@@ -258,11 +280,10 @@ def _num(s):
 
 
 def get_insider(tickers, force=False):
-    """ดึงรายการซื้อขายของผู้บริหารจาก OpenInsider (ข้อมูล SEC Form 4)"""
+    """ดึงรายการซื้อขายของผู้บริหารจาก OpenInsider (ข้อมูล SEC Form 4) — แคชรายหุ้น 30 นาที"""
     from bs4 import BeautifulSoup
     now = time.time()
-    if not force and _insider_cache["items"] and now - _insider_cache["ts"] < 1800:
-        return _insider_cache["items"]
+    tickers = [t.upper() for t in tickers][:15]
 
     def one(t):
         rows = []
@@ -293,12 +314,19 @@ def get_insider(tickers, force=False):
             pass
         return rows
 
+    need = [t for t in tickers
+            if force or t not in _insider_cache or now - _insider_cache[t][0] >= 1800]
+    if need:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+            for t, rows in zip(need, ex.map(one, need)):
+                _insider_cache[t] = (now, rows)
+    if len(_insider_cache) > 200:
+        for k in sorted(_insider_cache, key=lambda k: _insider_cache[k][0])[:100]:
+            _insider_cache.pop(k, None)
+
     items = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
-        for rows in ex.map(one, tickers):
-            items.extend(rows)
+    for t in tickers:
+        if t in _insider_cache:
+            items.extend(_insider_cache[t][1])
     items.sort(key=lambda x: x["date"], reverse=True)
-    items = items[:60]
-    _insider_cache["ts"] = now
-    _insider_cache["items"] = items
-    return items
+    return items[:60]

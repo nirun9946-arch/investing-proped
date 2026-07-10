@@ -186,6 +186,24 @@ const grid = document.getElementById('grid');
 const summary = document.getElementById('summary');
 let results = {};
 
+// ===== watchlist ส่วนตัว: เก็บในเบราว์เซอร์ของแต่ละคน (localStorage) =====
+let watchlist = null;
+async function getWatchlist(){
+  if(watchlist) return watchlist;
+  try{ watchlist = JSON.parse(localStorage.getItem('ip_watchlist')) || null; }catch(e){}
+  if(!watchlist || !watchlist.length){
+    try{ watchlist = await (await fetch('/api/watchlist')).json(); }
+    catch(e){ watchlist = ['NVDA','AAPL','QQQM']; }
+    saveWatchlist();
+  }
+  return watchlist;
+}
+function saveWatchlist(){
+  localStorage.setItem('ip_watchlist', JSON.stringify(watchlist));
+  newsLoaded = false; insiderLoaded = false;   // ให้ข่าว/วงในโหลดใหม่ตามลิสต์ล่าสุด
+}
+function tickersQS(){ return 'tickers=' + encodeURIComponent(watchlist.join(',')); }
+
 function toast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg; t.style.display = 'block';
@@ -290,7 +308,8 @@ function renderSummary(){
     <span class="pill buy">🟢 ซื้อ ${buy}</span>
     <span class="pill hold">⚪ ถือ/รอ ${hold}</span>
     <span class="pill sell">🔴 ขาย ${sell}</span>
-    <span class="pill time">อัปเดตล่าสุด ${new Date().toLocaleTimeString('th-TH')}</span>`;
+    <span class="pill time">อัปเดตล่าสุด ${new Date().toLocaleTimeString('th-TH')}</span>
+    <span class="pill time">💾 วอทช์ลิสต์ส่วนตัวของคุณ — บันทึกในเบราว์เซอร์นี้</span>`;
 }
 
 function render(){
@@ -302,7 +321,7 @@ function render(){
 async function scanAll(){
   const btn = document.getElementById('scanBtn');
   btn.disabled = true; btn.textContent = '⏳ กำลังสแกน...';
-  const list = await (await fetch('/api/watchlist')).json();
+  const list = await getWatchlist();
   results = {};
   grid.innerHTML = list.map(t=>`<div class="skeleton" id="sk-${t}">${t} …</div>`).join('');
   summary.innerHTML = '';
@@ -322,12 +341,14 @@ async function addTicker(){
   const inp = document.getElementById('newTicker');
   const tk = inp.value.trim().toUpperCase();
   if(!tk) return;
-  const res = await fetch('/api/watchlist',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({ticker:tk})});
+  await getWatchlist();
+  if(watchlist.includes(tk)){ toast('❌ ' + tk + ' มีอยู่แล้ว'); return; }
+  const res = await fetch('/api/validate/'+encodeURIComponent(tk));
   const j = await res.json();
-  if(!res.ok){ toast('❌ ' + j.error); return; }
+  if(!j.ok){ toast('❌ ' + (j.error || 'ไม่พบข้อมูล ' + tk)); return; }
+  watchlist.push(tk); saveWatchlist();
   inp.value = '';
-  toast('✅ เพิ่ม ' + tk + ' แล้ว');
+  toast('✅ เพิ่ม ' + tk + ' ในวอทช์ลิสต์ของคุณแล้ว');
   try{
     const r = await (await fetch('/api/analyze/'+encodeURIComponent(tk))).json();
     results[tk] = r; render();
@@ -335,8 +356,9 @@ async function addTicker(){
 }
 
 async function removeTicker(tk){
-  if(!confirm('ลบ ' + tk + ' ออกจาก watchlist?')) return;
-  await fetch('/api/watchlist/'+encodeURIComponent(tk),{method:'DELETE'});
+  if(!confirm('ลบ ' + tk + ' ออกจากวอทช์ลิสต์ของคุณ?')) return;
+  await getWatchlist();
+  watchlist = watchlist.filter(x => x !== tk); saveWatchlist();
   delete results[tk]; render();
   toast('🗑 ลบ ' + tk + ' แล้ว');
 }
@@ -433,7 +455,8 @@ async function loadInsider(force){
   if(!insiderLoaded) document.getElementById('insList').innerHTML =
     '<div class="news-loading">⏳ กำลังดึงข้อมูลการซื้อขายของผู้บริหาร...</div>';
   try{
-    const r = await fetch('/api/insider' + (force ? '?refresh=1' : ''));
+    await getWatchlist();
+    const r = await fetch('/api/insider?' + tickersQS() + (force ? '&refresh=1' : ''));
     const j = await r.json();
     if(j.items && j.items.length){
       document.getElementById('insList').innerHTML = j.items.map(insiderItem).join('');
@@ -455,7 +478,8 @@ async function loadNews(force){
   if(!newsLoaded) document.getElementById('newsList').innerHTML =
     '<div class="news-loading">⏳ กำลังดึงข่าวและแปลไทย... (ครั้งแรกใช้เวลา ~20 วินาที)</div>';
   try{
-    const r = await fetch('/api/news' + (force ? '?refresh=1' : ''));
+    await getWatchlist();
+    const r = await fetch('/api/news?' + tickersQS() + (force ? '&refresh=1' : ''));
     const j = await r.json();
     if(j.items && j.items.length){
       document.getElementById('newsList').innerHTML = j.items.map(newsItem).join('');

@@ -35,45 +35,39 @@ def index():
     return send_from_directory(app.static_folder, "index.html")
 
 
+def _tickers_param():
+    """watchlist ของผู้ใช้แต่ละคน ส่งมาทาง ?tickers=A,B,C — ถ้าไม่ส่งใช้ค่าเริ่มต้นจาก config"""
+    q = request.args.get("tickers", "").strip()
+    if q:
+        return [t.strip().upper() for t in q.split(",") if t.strip()][:15]
+    return read_config()["watchlist"]
+
+
 @app.route("/api/watchlist", methods=["GET"])
 def get_watchlist():
+    """รายการเริ่มต้นสำหรับผู้ใช้ใหม่ (แต่ละคนเก็บของตัวเองในเบราว์เซอร์)"""
     return jsonify(read_config()["watchlist"])
 
 
-@app.route("/api/watchlist", methods=["POST"])
-def add_ticker():
-    ticker = (request.json or {}).get("ticker", "").strip().upper()
-    if not ticker:
-        return jsonify({"error": "กรุณาระบุชื่อหุ้น"}), 400
-    cfg = read_config()
-    if ticker in cfg["watchlist"]:
-        return jsonify({"error": f"{ticker} มีอยู่แล้ว"}), 400
-    # ตรวจว่าดึงข้อมูลได้จริงก่อนบันทึก
+@app.route("/api/validate/<ticker>")
+def validate_ticker(ticker):
+    """ตรวจว่าชื่อหุ้นดึงข้อมูลได้จริง ก่อนให้ผู้ใช้เพิ่มเข้า watchlist ของตัวเอง"""
+    ticker = ticker.strip().upper()
     try:
         core.fetch(ticker, period="3mo")
+        return jsonify({"ok": True, "ticker": ticker})
     except Exception:
-        return jsonify({"error": f"ไม่พบข้อมูล {ticker} — ตรวจสอบชื่อ (หุ้นไทยใส่ .BK เช่น PTT.BK)"}), 404
-    cfg["watchlist"].append(ticker)
-    write_config(cfg)
-    return jsonify({"ok": True, "watchlist": cfg["watchlist"]})
-
-
-@app.route("/api/watchlist/<ticker>", methods=["DELETE"])
-def remove_ticker(ticker):
-    cfg = read_config()
-    ticker = ticker.upper()
-    if ticker in cfg["watchlist"]:
-        cfg["watchlist"].remove(ticker)
-        write_config(cfg)
-    return jsonify({"ok": True, "watchlist": cfg["watchlist"]})
+        return jsonify({"ok": False,
+                        "error": f"ไม่พบข้อมูล {ticker} — ตรวจสอบชื่อ (หุ้นไทยใส่ .BK เช่น PTT.BK)"}), 404
 
 
 @app.route("/api/news")
 def api_news():
     force = request.args.get("refresh") == "1"
     try:
-        items = news_mod.get_news(read_config()["watchlist"], force=force)
-        return jsonify({"updated": news_mod._cache["ts"], "items": items})
+        import time
+        items = news_mod.get_news(_tickers_param(), force=force)
+        return jsonify({"updated": time.time(), "items": items})
     except Exception as e:
         return jsonify({"error": str(e), "items": []}), 500
 
@@ -88,7 +82,7 @@ def api_article():
 def api_insider():
     force = request.args.get("refresh") == "1"
     try:
-        items = news_mod.get_insider(read_config()["watchlist"], force=force)
+        items = news_mod.get_insider(_tickers_param(), force=force)
         return jsonify({"items": items})
     except Exception as e:
         return jsonify({"error": str(e), "items": []}), 500
