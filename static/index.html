@@ -140,6 +140,18 @@
   #authMsg{font-size:.8rem;color:var(--muted);line-height:1.4;min-height:1em}
   #authMsg.err{color:var(--red)}
   #authMsg.ok{color:var(--green)}
+  #page-calendar{padding:16px 22px 40px;max-width:900px;margin:0 auto}
+  .cal-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 18px;
+    margin-bottom:10px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;animation:fadeIn .3s ease}
+  .cal-date{flex:none;text-align:center;min-width:74px;background:var(--card2);border-radius:10px;padding:8px 10px}
+  .cal-date .cd-day{font-size:1.25rem;font-weight:800}
+  .cal-date .cd-mon{font-size:.75rem;color:var(--muted)}
+  .cal-badge{padding:4px 12px;border-radius:8px;font-weight:800;font-size:.85rem;flex:none}
+  .cb-fed{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow)}
+  .cb-earn{background:rgba(88,166,255,.12);color:var(--blue);border:1px solid var(--blue)}
+  .cal-body{flex:1;min-width:200px;line-height:1.5}
+  .cal-days{flex:none;font-size:.85rem;font-weight:700;color:var(--muted)}
+  .cal-days.soon{color:var(--red)}
   #portTabs{display:flex;gap:8px;flex-wrap:wrap;padding:14px 22px 0}
   .ptab{background:var(--card);border:1px solid var(--border);color:var(--muted);
     border-radius:10px;padding:8px 16px;font-weight:700}
@@ -199,6 +211,7 @@
     <button class="tab active" id="tab-stocks" onclick="switchPage('stocks')">📊 หุ้น</button>
     <button class="tab" id="tab-news" onclick="switchPage('news')">📰 ข่าว</button>
     <button class="tab" id="tab-insider" onclick="switchPage('insider')">🕵️ วงใน</button>
+    <button class="tab" id="tab-calendar" onclick="switchPage('calendar')">📅 ปฏิทิน</button>
   </nav>
   <div class="spacer"></div>
   <div class="addbox">
@@ -254,6 +267,14 @@
     แต่ถ้าผู้บริหารหลายคนขายพร้อมกันจำนวนมาก ควรระวังเป็นพิเศษ
   </div>
   <div id="insList"><div class="news-loading">⏳ กำลังโหลด...</div></div>
+</div>
+
+<div id="page-calendar" style="display:none">
+  <div class="news-head">
+    <button class="btn-blue" id="calBtn" onclick="loadCalendar(true)">🔄 รีเฟรชปฏิทิน</button>
+    <span class="nupd">ประชุม Fed จาก federalreserve.gov · วันประกาศงบจาก Yahoo Finance (กำหนดคาดการณ์ อาจเลื่อนได้)</span>
+  </div>
+  <div id="calList"><div class="news-loading">⏳ กำลังโหลด...</div></div>
 </div>
 
 <div id="toast"></div>
@@ -328,7 +349,7 @@ function switchPort(i){
   loadActiveIntoGlobals();
   persistPorts();
   results = {};
-  newsLoaded = false; insiderLoaded = false;
+  newsLoaded = false; insiderLoaded = false; calendarLoaded = false;
   syncUp();
   scanAll();
 }
@@ -347,7 +368,7 @@ async function getWatchlist(){
 }
 function saveWatchlist(){
   persistPorts();
-  newsLoaded = false; insiderLoaded = false;   // ให้ข่าว/วงในโหลดใหม่ตามลิสต์ล่าสุด
+  newsLoaded = false; insiderLoaded = false; calendarLoaded = false;  // โหลดใหม่ตามลิสต์ล่าสุด
   syncUp();                                     // ถ้าล็อกอินอยู่ ซิงก์ขึ้นบัญชีอัตโนมัติ
 }
 function tickersQS(){ return 'tickers=' + encodeURIComponent(watchlist.join(',')); }
@@ -723,6 +744,7 @@ async function removeTicker(tk){
 let newsLoaded = false;
 
 let insiderLoaded = false;
+let calendarLoaded = false;
 
 function switchPage(page){
   document.getElementById('portTabs').style.display = page==='stocks' ? 'flex' : 'none';
@@ -731,10 +753,18 @@ function switchPage(page){
   document.getElementById('grid').style.display = page==='stocks' ? 'grid' : 'none';
   document.getElementById('page-news').style.display = page==='news' ? 'block' : 'none';
   document.getElementById('page-insider').style.display = page==='insider' ? 'block' : 'none';
-  ['stocks','news','insider'].forEach(p=>
+  document.getElementById('page-calendar').style.display = page==='calendar' ? 'block' : 'none';
+  ['stocks','news','insider','calendar'].forEach(p=>
     document.getElementById('tab-'+p).classList.toggle('active', p===page));
   if(page==='news' && !newsLoaded) loadNews(false);
   if(page==='insider' && !insiderLoaded) loadInsider(false);
+  if(page==='calendar' && !calendarLoaded) loadCalendar(false);
+}
+
+function fetchWithTimeout(url, ms){
+  const ctl = new AbortController();
+  const timer = setTimeout(()=>ctl.abort(), ms);
+  return fetch(url, {signal: ctl.signal}).finally(()=>clearTimeout(timer));
 }
 
 function timeAgo(ts){
@@ -830,6 +860,55 @@ async function loadInsider(force){
   btn.disabled = false; btn.textContent = '🔄 รีเฟรชข้อมูลวงใน';
 }
 
+// ================= หน้าปฏิทินตลาด =================
+const THAI_MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+
+function calItem(ev){
+  const d = new Date(ev.date + 'T00:00:00');
+  const dayNum = d.getDate() + (ev.date_end ? '-' + new Date(ev.date_end+'T00:00:00').getDate() : '');
+  const mon = THAI_MONTHS[d.getMonth()] + ' ' + (d.getFullYear()+543);
+  const isFed = ev.type === 'fed';
+  const badge = isFed ? '<span class="cal-badge cb-fed">🏛 Fed</span>'
+                      : '<span class="cal-badge cb-earn">📊 งบไตรมาส</span>';
+  const tick = ev.ticker ? `<span class="ntick">${ev.ticker}</span>` : '';
+  let daysTxt, soon = false;
+  if(ev.days < 0 && ev.date_end && new Date(ev.date_end+'T00:00:00') >= new Date().setHours(0,0,0,0)){
+    daysTxt = '🔴 กำลังประชุม'; soon = true;
+  } else if(ev.days === 0){ daysTxt = '🔴 วันนี้'; soon = true; }
+  else if(ev.days === 1){ daysTxt = 'พรุ่งนี้'; soon = true; }
+  else if(ev.days <= 7){ daysTxt = 'อีก ' + ev.days + ' วัน'; soon = true; }
+  else { daysTxt = 'อีก ' + ev.days + ' วัน'; }
+  return `<div class="cal-item">
+    <div class="cal-date"><div class="cd-day">${dayNum}</div><div class="cd-mon">${mon}</div></div>
+    ${badge}${tick}
+    <div class="cal-body">${ev.title}</div>
+    <div class="cal-days ${soon?'soon':''}">${daysTxt}</div>
+  </div>`;
+}
+
+async function loadCalendar(force){
+  const btn = document.getElementById('calBtn');
+  btn.disabled = true; btn.textContent = '⏳ กำลังโหลด...';
+  if(!calendarLoaded) document.getElementById('calList').innerHTML =
+    '<div class="news-loading">⏳ กำลังโหลดกำหนดการ...</div>';
+  try{
+    await getWatchlist();
+    const r = await fetchWithTimeout('/api/calendar?' + tickersQS() + (force ? '&refresh=1' : ''), 60000);
+    const j = await r.json();
+    if(j.items && j.items.length){
+      document.getElementById('calList').innerHTML = j.items.map(calItem).join('');
+      calendarLoaded = true;
+    } else {
+      document.getElementById('calList').innerHTML =
+        '<div class="news-loading">ไม่พบกิจกรรมที่กำลังจะมาถึง</div>';
+    }
+  }catch(e){
+    document.getElementById('calList').innerHTML =
+      '<div class="news-loading">❌ โหลดไม่สำเร็จ — ลองกดรีเฟรชอีกครั้ง</div>';
+  }
+  btn.disabled = false; btn.textContent = '🔄 รีเฟรชปฏิทิน';
+}
+
 async function loadNews(force){
   const btn = document.getElementById('newsBtn');
   btn.disabled = true; btn.textContent = '⏳ กำลังโหลด...';
@@ -837,7 +916,7 @@ async function loadNews(force){
     '<div class="news-loading">⏳ กำลังดึงข่าวและแปลไทย... (ครั้งแรกใช้เวลา ~20 วินาที)</div>';
   try{
     await getWatchlist();
-    const r = await fetch('/api/news?' + tickersQS() + (force ? '&refresh=1' : ''));
+    const r = await fetchWithTimeout('/api/news?' + tickersQS() + (force ? '&refresh=1' : ''), 90000);
     const j = await r.json();
     if(j.items && j.items.length){
       document.getElementById('newsList').innerHTML = j.items.map(newsItem).join('');

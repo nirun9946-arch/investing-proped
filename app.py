@@ -222,6 +222,16 @@ def api_insider():
         return jsonify({"error": str(e), "items": []}), 500
 
 
+@app.route("/api/calendar")
+def api_calendar():
+    force = request.args.get("refresh") == "1"
+    try:
+        items = news_mod.get_calendar(_tickers_param(), force=force)
+        return jsonify({"items": items})
+    except Exception as e:
+        return jsonify({"error": str(e), "items": []}), 500
+
+
 @app.route("/api/analyze/<ticker>")
 def analyze_one(ticker):
     try:

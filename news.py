@@ -44,7 +44,7 @@ def translate_th(text):
         r = requests.get(
             "https://translate.googleapis.com/translate_a/single",
             params={"client": "gtx", "sl": "en", "tl": "th", "dt": "t", "q": text[:1500]},
-            timeout=12,
+            timeout=8,
         )
         segs = r.json()[0] or []
         result = "".join(s[0] for s in segs if s and s[0]).strip()
@@ -58,7 +58,9 @@ def translate_th(text):
 
 def fetch_feed(name, url):
     try:
-        d = feedparser.parse(url)
+        # ดึงเองผ่าน requests พร้อม timeout — กัน feed ช้าแล้วลากทั้งหน้าให้ค้าง
+        resp = requests.get(url, headers={"User-Agent": UA}, timeout=10)
+        d = feedparser.parse(resp.content)
         out = []
         for e in d.entries[:12]:
             ts = 0
@@ -330,3 +332,87 @@ def get_insider(tickers, force=False):
             items.extend(_insider_cache[t][1])
     items.sort(key=lambda x: x["date"], reverse=True)
     return items[:60]
+
+
+# ----------------------------------------------------------------------
+# ปฏิทินตลาด: กำหนดประชุม Fed (FOMC) + วันประกาศงบไตรมาสของหุ้นใน watchlist
+# ----------------------------------------------------------------------
+# กำหนดการทางการจาก federalreserve.gov/monetarypolicy/fomccalendars.htm
+# (start, end, มี Dot Plot/คาดการณ์เศรษฐกิจ)
+FOMC_MEETINGS = [
+    ("2026-01-27", "2026-01-28", False),
+    ("2026-03-17", "2026-03-18", True),
+    ("2026-04-28", "2026-04-29", False),
+    ("2026-06-16", "2026-06-17", True),
+    ("2026-07-28", "2026-07-29", False),
+    ("2026-09-15", "2026-09-16", True),
+    ("2026-10-27", "2026-10-28", False),
+    ("2026-12-08", "2026-12-09", True),
+    ("2027-01-26", "2027-01-27", False),
+    ("2027-03-16", "2027-03-17", True),
+    ("2027-04-27", "2027-04-28", False),
+    ("2027-06-08", "2027-06-09", True),
+]
+
+_earn_cache = {}  # ticker -> (ts, "YYYY-MM-DD" or None)
+
+
+def _next_earnings_date(t):
+    """วันประกาศงบถัดไปจาก Yahoo Finance (เป็นกำหนดคาดการณ์)"""
+    import yfinance as yf
+    from datetime import date, datetime as dtm
+    today = date.today()
+    try:
+        cal = yf.Ticker(t).calendar or {}
+        eds = cal.get("Earnings Date") or []
+        if not isinstance(eds, (list, tuple)):
+            eds = [eds]
+        future = []
+        for d in eds:
+            if isinstance(d, dtm):
+                d = d.date()
+            if isinstance(d, date) and d >= today:
+                future.append(d)
+        return str(min(future)) if future else None
+    except Exception:
+        return None
+
+
+def get_calendar(tickers, force=False):
+    from datetime import date, datetime as dtm
+    today = date.today()
+    tickers = [t.upper() for t in tickers][:15]
+    events = []
+
+    # 1) ประชุม Fed
+    for start, end, proj in FOMC_MEETINGS:
+        end_d = dtm.strptime(end, "%Y-%m-%d").date()
+        if end_d < today:
+            continue
+        start_d = dtm.strptime(start, "%Y-%m-%d").date()
+        title = "ประชุม Fed (FOMC) — แถลงผลดอกเบี้ยวันที่สอง"
+        if proj:
+            title += " พร้อม Dot Plot คาดการณ์เศรษฐกิจ"
+        events.append({"date": start, "date_end": end, "type": "fed",
+                       "ticker": None, "title": title,
+                       "days": (start_d - today).days})
+
+    # 2) งบไตรมาสของหุ้นใน watchlist (แคชรายตัว 12 ชม.)
+    now = time.time()
+    need = [t for t in tickers
+            if force or t not in _earn_cache or now - _earn_cache[t][0] >= 43200]
+    if need:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+            for t, d in zip(need, ex.map(_next_earnings_date, need)):
+                _earn_cache[t] = (now, d)
+    for t in tickers:
+        d = _earn_cache.get(t, (0, None))[1]
+        if d:
+            d_date = dtm.strptime(d, "%Y-%m-%d").date()
+            events.append({"date": d, "date_end": None, "type": "earnings",
+                           "ticker": t,
+                           "title": f"ประกาศงบไตรมาส {t} (กำหนดคาดการณ์จาก Yahoo)",
+                           "days": (d_date - today).days})
+
+    events.sort(key=lambda e: e["date"])
+    return events
