@@ -6,17 +6,26 @@
 <title>📈 Investing Pro</title>
 <style>
   :root{
-    --bg:#0d1117; --card:#161b22; --card2:#1c2330; --border:#2d3646;
-    --text:#e6edf3; --muted:#8b949e;
-    --green:#3fb950; --green-bg:rgba(63,185,80,.12);
-    --red:#f85149; --red-bg:rgba(248,81,73,.12);
-    --yellow:#d29922; --yellow-bg:rgba(210,153,34,.12);
-    --blue:#58a6ff;
+    --bg:#eef4f9; --card:#ffffff; --card2:#f2f7fb; --border:#d8e4ee;
+    --text:#0f2a40; --muted:#5c7489;
+    --green:#149a5e; --green-bg:rgba(20,154,94,.10);
+    --red:#d84a4a; --red-bg:rgba(216,74,74,.10);
+    --yellow:#c78a10; --yellow-bg:rgba(199,138,16,.12);
+    --blue:#0e8fd0;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Segoe UI',Tahoma,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-  header{position:sticky;top:0;z-index:10;background:rgba(13,17,23,.92);backdrop-filter:blur(8px);
-    border-bottom:1px solid var(--border);padding:14px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  body::before{content:'';position:fixed;top:0;left:0;right:0;height:5px;z-index:100;
+    background:linear-gradient(90deg,#0e8fd0,#5ec3f2 45%,#0e8fd0)}
+  header{position:sticky;top:0;z-index:10;background:rgba(255,255,255,.95);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--border);box-shadow:0 2px 12px rgba(15,60,105,.06);
+    padding:16px 22px 14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;overflow:hidden}
+  header::after{content:'';position:absolute;right:-36px;top:-46px;width:150px;height:150px;pointer-events:none;
+    background:linear-gradient(135deg,rgba(14,143,208,.16),rgba(94,195,242,.05));
+    clip-path:polygon(25% 5%,75% 5%,100% 50%,75% 95%,25% 95%,0 50%)}
+  header::before{content:'';position:absolute;right:70px;top:38px;width:64px;height:64px;pointer-events:none;
+    background:linear-gradient(135deg,rgba(14,143,208,.10),rgba(94,195,242,.03));
+    clip-path:polygon(25% 5%,75% 5%,100% 50%,75% 95%,25% 95%,0 50%)}
   header h1{font-size:1.25rem;font-weight:700}
   header h1 span{color:var(--blue)}
   .spacer{flex:1}
@@ -25,10 +34,10 @@
     border-radius:8px;padding:9px 12px;width:170px;font-size:.95rem;outline:none}
   .addbox input:focus{border-color:var(--blue)}
   button{border:none;border-radius:8px;padding:9px 16px;font-size:.95rem;cursor:pointer;font-weight:600;transition:.15s}
-  .btn-blue{background:var(--blue);color:#0d1117}
-  .btn-blue:hover{filter:brightness(1.15)}
-  .btn-green{background:var(--green);color:#0d1117}
-  .btn-green:hover{filter:brightness(1.15)}
+  .btn-blue{background:var(--blue);color:#fff;border-radius:20px}
+  .btn-blue:hover{filter:brightness(1.1)}
+  .btn-green{background:var(--green);color:#fff;border-radius:20px}
+  .btn-green:hover{filter:brightness(1.1)}
   .btn-green:disabled{opacity:.5;cursor:wait}
   #summary{display:flex;gap:10px;padding:16px 22px 0;flex-wrap:wrap}
   .pill{border-radius:20px;padding:6px 16px;font-size:.9rem;font-weight:600;border:1px solid var(--border)}
@@ -37,8 +46,8 @@
   .pill.hold{color:var(--yellow);background:var(--yellow-bg)}
   .pill.time{color:var(--muted)}
   #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:16px;padding:16px 22px 40px}
-  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;position:relative;
-    animation:fadeIn .3s ease}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px;position:relative;
+    animation:fadeIn .3s ease;box-shadow:0 3px 14px rgba(15,60,105,.07)}
   @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1}}
   .card .del{position:absolute;top:10px;right:12px;background:none;color:var(--muted);font-size:1rem;padding:4px 8px}
   .card .del:hover{color:var(--red)}
@@ -122,7 +131,7 @@
     padding:4px 7px;width:80px;font-size:.84rem;outline:none;text-align:right}
   .alloc input.tgt{width:52px}
   .alloc input:focus{border-color:var(--blue)}
-  .abar{height:9px;border-radius:5px;background:var(--bg);overflow:hidden;margin-bottom:6px}
+  .abar{height:9px;border-radius:5px;background:var(--border);overflow:hidden;margin-bottom:6px}
   .abar i{display:block;height:100%;border-radius:5px 0 0 5px;transition:.3s}
   .atext{line-height:1.5}
   .amuted{color:var(--muted)}
@@ -131,7 +140,7 @@
   #authBtn.on{border-color:var(--green);color:var(--green)}
   #authPanel{position:absolute;top:115%;right:0;background:var(--card);border:1px solid var(--border);
     border-radius:12px;padding:14px;display:none;flex-direction:column;gap:8px;width:250px;z-index:60;
-    box-shadow:0 8px 24px rgba(0,0,0,.4)}
+    box-shadow:0 8px 24px rgba(15,60,105,.18)}
   #authPanel input{background:var(--card2);border:1px solid var(--border);color:var(--text);
     border-radius:8px;padding:8px 10px;font-size:.9rem;outline:none}
   #authPanel input:focus{border-color:var(--blue)}
@@ -141,8 +150,9 @@
   #authMsg.err{color:var(--red)}
   #authMsg.ok{color:var(--green)}
   #page-calendar{padding:16px 22px 40px;max-width:900px;margin:0 auto}
-  .cal-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 18px;
-    margin-bottom:10px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;animation:fadeIn .3s ease}
+  .cal-item{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 18px;
+    margin-bottom:10px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;animation:fadeIn .3s ease;
+    box-shadow:0 2px 10px rgba(15,60,105,.06)}
   .cal-date{flex:none;text-align:center;min-width:74px;background:var(--card2);border-radius:10px;padding:8px 10px}
   .cal-date .cd-day{font-size:1.25rem;font-weight:800}
   .cal-date .cd-mon{font-size:.75rem;color:var(--muted)}
@@ -155,18 +165,18 @@
   .cal-days.soon{color:var(--red)}
   #portTabs{display:flex;gap:8px;flex-wrap:wrap;padding:14px 22px 0}
   .ptab{background:var(--card);border:1px solid var(--border);color:var(--muted);
-    border-radius:10px;padding:8px 16px;font-weight:700}
-  .ptab.active{background:var(--blue);color:#0d1117;border-color:var(--blue)}
+    border-radius:18px;padding:8px 18px;font-weight:700;box-shadow:0 1px 6px rgba(15,60,105,.05)}
+  .ptab.active{background:var(--blue);color:#fff;border-color:var(--blue)}
   .ptab.pedit{padding:8px 12px}
   .ptab:hover{border-color:var(--blue)}
   .tabs{display:flex;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:4px}
-  .tab{background:none;color:var(--muted);padding:7px 18px;border-radius:7px;font-weight:700}
-  .tab.active{background:var(--blue);color:#0d1117}
+  .tab{background:none;color:var(--muted);padding:7px 18px;border-radius:16px;font-weight:700}
+  .tab.active{background:var(--blue);color:#fff}
   #page-news{padding:16px 22px 40px;max-width:900px;margin:0 auto}
   .news-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
   .news-head .nupd{color:var(--muted);font-size:.85rem}
-  .nitem{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:12px;
-    animation:fadeIn .3s ease}
+  .nitem{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:12px;
+    animation:fadeIn .3s ease;box-shadow:0 2px 10px rgba(15,60,105,.06)}
   .nitem .nmeta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:.78rem}
   .nsrc{padding:3px 10px;border-radius:12px;font-weight:700;background:rgba(88,166,255,.12);color:var(--blue)}
   .nsrc.cnbc{background:var(--red-bg);color:var(--red)}
@@ -188,8 +198,9 @@
   #page-insider{padding:16px 22px 40px;max-width:900px;margin:0 auto}
   .ins-note{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;
     font-size:.85rem;color:var(--muted);line-height:1.6;margin-bottom:14px}
-  .ins-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 18px;
-    margin-bottom:10px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;animation:fadeIn .3s ease}
+  .ins-item{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 18px;
+    margin-bottom:10px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;animation:fadeIn .3s ease;
+    box-shadow:0 2px 10px rgba(15,60,105,.06)}
   .ins-act{padding:4px 14px;border-radius:8px;font-weight:800;font-size:.9rem;flex:none}
   .ia-buy{background:var(--green-bg);color:var(--green);border:1px solid var(--green)}
   .ia-sell{background:var(--red-bg);color:var(--red);border:1px solid var(--red)}
