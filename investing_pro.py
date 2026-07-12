@@ -86,6 +86,102 @@ def atr(df, period=14):
     return tr.ewm(alpha=1 / period, adjust=False).mean()
 
 
+def volume_profile(df, lookback=120, bins=40):
+    """Volume Profile: POC, Value Area 70%, HVN/LVN + สถิติพฤติกรรมราคาที่โซน POC"""
+    import numpy as np
+    data = df.tail(lookback)
+    lo, hi = float(data["Low"].min()), float(data["High"].max())
+    if hi <= lo or len(data) < 40:
+        return None
+
+    edges = np.linspace(lo, hi, bins + 1)
+    centers = (edges[:-1] + edges[1:]) / 2
+    vol = np.zeros(bins)
+    span = hi - lo
+    for l, h, v in zip(data["Low"].values, data["High"].values, data["Volume"].values):
+        if v <= 0:
+            continue
+        i0 = max(0, min(bins - 1, int((l - lo) / span * bins)))
+        i1 = max(0, min(bins - 1, int((h - lo) / span * bins)))
+        vol[i0:i1 + 1] += v / (i1 - i0 + 1)  # เกลี่ยวอลุ่มตามช่วงราคาของแท่ง
+
+    total = vol.sum()
+    if total <= 0:
+        return None
+
+    # POC = ระดับราคาที่วอลุ่มสะสมหนาแน่นที่สุด
+    poc_i = int(vol.argmax())
+    poc = float(centers[poc_i])
+
+    # Value Area 70%: ขยายจาก POC ไปฝั่งที่วอลุ่มมากกว่า จนครบ 70% ของทั้งหมด
+    included = {poc_i}
+    acc = vol[poc_i]
+    up, dn = poc_i + 1, poc_i - 1
+    while acc < 0.70 * total and (up < bins or dn >= 0):
+        vu = vol[up] if up < bins else -1.0
+        vd = vol[dn] if dn >= 0 else -1.0
+        if vu >= vd:
+            included.add(up); acc += vu; up += 1
+        else:
+            included.add(dn); acc += vd; dn -= 1
+    vah, val = float(centers[max(included)]), float(centers[min(included)])
+
+    # HVN/LVN: ยอด/หลุมวอลุ่มเฉพาะจุด (local peaks/valleys)
+    thr_h, thr_l = np.percentile(vol, 75), np.percentile(vol, 25)
+    hvn, lvn = [], []
+    for i in range(1, bins - 1):
+        if vol[i] >= vol[i - 1] and vol[i] >= vol[i + 1] and vol[i] >= thr_h:
+            hvn.append(float(centers[i]))
+        elif vol[i] <= vol[i - 1] and vol[i] <= vol[i + 1] and vol[i] <= thr_l and vol[i] > 0:
+            lvn.append(float(centers[i]))
+
+    # Pattern Recognition: ในอดีตเมื่อราคาวิ่งเข้าโซน POC เกิดอะไรขึ้นใน 3 แท่งถัดมา
+    band = span / bins * 1.5
+    closes = data["Close"].values
+    touches = bounces = breaks = 0
+    for i in range(1, len(closes) - 3):
+        prev, cur = closes[i - 1], closes[i]
+        if abs(cur - poc) <= band and abs(prev - poc) > band:
+            touches += 1
+            fut = closes[i + 3]
+            if prev > poc:      # เข้ามาจากด้านบน
+                bounces += int(fut > poc + band)   # เด้งกลับขึ้น = POC เป็นแนวรับ
+                breaks += int(fut < poc - band)    # ทะลุลง
+            else:               # เข้ามาจากด้านล่าง
+                bounces += int(fut < poc - band)   # โดนกดกลับลง = POC เป็นแนวต้าน
+                breaks += int(fut > poc + band)    # ทะลุขึ้น
+
+    vmax = vol.max()
+    profile = [{"p": round(float(c), 4), "v": round(float(v / vmax), 3)}
+               for c, v in zip(centers, vol)]
+    return {"poc": poc, "vah": vah, "val": val, "band": band,
+            "hvn": sorted(hvn), "lvn": sorted(lvn),
+            "touches": touches, "bounces": bounces, "breaks": breaks,
+            "profile": profile}
+
+
+def predict_5d(df, price):
+    """Predictive Analytics: หาวันในอดีตที่สภาวะตลาดเหมือนวันนี้ (เทรนด์/RSI/MACD)
+    แล้ววัดสถิติจริงว่า 5 วันถัดมาราคาขึ้นกี่เปอร์เซ็นต์ของครั้งทั้งหมด"""
+    d = df.dropna(subset=["RSI", "EMA50", "MACD_HIST"]).copy()
+    if len(d) < 60:
+        return None
+    d["fwd5"] = d["Close"].shift(-5) / d["Close"] - 1
+    cur = d.iloc[-1]
+    hist = d.iloc[:-5]
+    mask = (
+        ((hist["Close"] > hist["EMA50"]) == bool(cur["Close"] > cur["EMA50"]))
+        & ((hist["RSI"] // 20) == (cur["RSI"] // 20))
+        & ((hist["MACD_HIST"] > 0) == bool(cur["MACD_HIST"] > 0))
+    )
+    sample = hist.loc[mask, "fwd5"].dropna()
+    if len(sample) < 12:
+        return None
+    return {"prob_up": float((sample > 0).mean()),
+            "avg_move": float(sample.mean()),
+            "n": int(len(sample))}
+
+
 def support_resistance(df, lookback=60, window=5):
     """หาแนวรับ/แนวต้านจาก swing highs/lows ล่าสุด"""
     recent = df.tail(lookback)
@@ -274,6 +370,26 @@ def analyze(ticker, cfg):
             f"วอลุ่ม {vol_ratio:.1f} เท่าของค่าเฉลี่ย 20 วัน (แท่ง{'เขียว' if direction=='bull' else 'แดง'})")
         events.append("vol_spike_" + direction)
 
+    # --- Volume Profile Fusion: ตำแหน่งราคาเทียบโซนวอลุ่ม ---
+    vp = volume_profile(df)
+    if vp:
+        if price > vp["vah"]:
+            add("Above Value Area", "bull", 1,
+                f"ราคายืนเหนือ Value Area (VAH {vp['vah']:,.2f}) — ตลาดยอมรับราคาสูงขึ้น")
+        elif price < vp["val"]:
+            add("Below Value Area", "bear", 1,
+                f"ราคาหลุดใต้ Value Area (VAL {vp['val']:,.2f}) — ตลาดปฏิเสธราคา ระวังไหลต่อ")
+        hvn_below = [h for h in vp["hvn"] if h < price]
+        if hvn_below and (price - hvn_below[-1]) / price <= 0.05:
+            add("HVN Support", "bull", 1,
+                f"มีโซนวอลุ่มหนาแน่น (HVN {hvn_below[-1]:,.2f}) รองรับใต้ราคา — แนวรับเชิงวอลุ่ม")
+        lvn_below = [l for l in vp["lvn"] if l < price]
+        if price < vp["poc"] and lvn_below and (price - lvn_below[-1]) / price <= 0.04:
+            add("LVN Below", "bear", 1,
+                f"ใต้ราคาเป็นโซนวอลุ่มบาง (LVN {lvn_below[-1]:,.2f}) — ถ้าหลุดอาจไหลเร็ว")
+
+    prediction = predict_5d(df, price)
+
     # --- Verdict ---
     if score >= 6:
         verdict = "STRONG BUY SIGNAL"
@@ -313,6 +429,8 @@ def analyze(ticker, cfg):
         "signals": signals,
         "events": events,
         "asof": str(df.index[-1].date()),
+        "vp": vp,
+        "prediction": prediction,
     }
     result.update(make_advice(result))
     return result
@@ -352,11 +470,22 @@ def make_advice(r):
         elif upside <= 0:
             reasons.append(f"ราคาปัจจุบันสูงกว่าเป้านักวิเคราะห์แล้ว ({upside:+.0f}%) — upside จำกัด")
 
+    pred = r.get("prediction")
+    if pred:
+        pct = pred["prob_up"] * 100
+        if pct >= 58:
+            reasons.append(f"สถิติย้อนหลัง: สภาวะแบบวันนี้เคยเกิด {pred['n']} ครั้ง — 5 วันถัดมาราคาขึ้น {pct:.0f}% ของครั้งทั้งหมด")
+        elif pct <= 42:
+            reasons.append(f"สถิติย้อนหลัง: สภาวะแบบวันนี้เคยเกิด {pred['n']} ครั้ง — 5 วันถัดมาราคาลง {100-pct:.0f}% ของครั้งทั้งหมด")
+
+    vp = r.get("vp")
     sup = r.get("support")
     entry = f"{sup:,.2f}" if sup else f"{r['ema20']:,.2f} (EMA20)"
     plan = (f"จุดเข้าที่น่าสนใจ: แถวแนวรับ {entry} | "
             f"ตัดขาดทุนถ้าหลุด {r['stop_suggest']:,.2f} | "
             f"เป้าทำกำไรแรก {r['target_suggest']:,.2f}")
+    if vp:
+        plan += f" | โซนวอลุ่ม: POC {vp['poc']:,.2f} · VA {vp['val']:,.2f}-{vp['vah']:,.2f}"
 
     return {"advice_label": label, "advice_tone": tone,
             "advice_reasons": reasons, "advice_plan": plan}
@@ -455,6 +584,14 @@ def print_report(r):
     print(f"  วอลุ่มเทียบเฉลี่ย: {r['vol_ratio']:.2f}x   ATR: {r['atr']:,.2f}")
     print(f"  จุดตัดขาดทุนแนะนำ (2xATR): {r['stop_suggest']:,.2f}")
     print(f"  เป้าหมายแนะนำ (3xATR)   : {r['target_suggest']:,.2f}")
+    vp = r.get("vp")
+    if vp:
+        print(f"  Volume Profile: POC {vp['poc']:,.2f} | VA {vp['val']:,.2f} - {vp['vah']:,.2f}")
+        if vp["touches"]:
+            print(f"    สถิติโซน POC: แตะ {vp['touches']} ครั้ง เด้งกลับ {vp['bounces']} ทะลุ {vp['breaks']}")
+    pred = r.get("prediction")
+    if pred:
+        print(f"  🔮 โอกาสขึ้นใน 5 วัน: {pred['prob_up']*100:.0f}% (จากเหตุการณ์คล้ายกัน {pred['n']} ครั้ง)")
     print("  สัญญาณ:")
     for sg in r["signals"]:
         arrow = "▲" if sg["dir"] == "bull" else "▼"

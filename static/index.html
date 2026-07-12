@@ -92,6 +92,21 @@
   .advice ul{margin:0 0 6px 18px;color:var(--text)}
   .advice li{margin-bottom:3px}
   .advice .plan{color:var(--muted);border-top:1px dashed var(--border);padding-top:6px;margin-top:6px}
+  .vpbox{margin-top:10px;padding:12px 14px;border-radius:10px;background:var(--card2);font-size:.84rem}
+  .vpbox .vph{font-weight:800;margin-bottom:8px;color:var(--blue)}
+  .vpflex{display:flex;gap:14px;align-items:stretch}
+  .vpchart{display:flex;flex-direction:column-reverse;gap:1px;width:90px;flex:none}
+  .vpchart .vpbar{height:4px;border-radius:2px;background:var(--border);position:relative}
+  .vpchart .vpbar.hot{background:var(--blue)}
+  .vpchart .vpbar.here{outline:1.5px solid var(--yellow)}
+  .vplv{flex:1;display:flex;flex-direction:column;gap:4px;justify-content:center}
+  .vplv .lvrow{display:flex;justify-content:space-between;gap:8px}
+  .vplv .lvrow span{color:var(--muted)}
+  .vpstat{margin-top:8px;color:var(--muted);line-height:1.5}
+  .predict{margin-top:10px}
+  .predict .plabel{display:flex;justify-content:space-between;font-size:.83rem;margin-bottom:4px}
+  .pmeter{height:10px;border-radius:5px;background:var(--red-bg);overflow:hidden}
+  .pmeter i{display:block;height:100%;background:var(--green);border-radius:5px 0 0 5px}
   .tabs{display:flex;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:4px}
   .tab{background:none;color:var(--muted);padding:7px 18px;border-radius:7px;font-weight:700}
   .tab.active{background:var(--blue);color:#0d1117}
@@ -270,6 +285,47 @@ function card(r){
       <div class="plan">📋 ${r.advice_plan||''}</div>
     </div>` : '';
 
+  // Volume Profile: กราฟวอลุ่มจิ๋ว (แกนตั้ง=ราคา) + ระดับ POC/VA + สถิติโซน
+  let vpBlock = '';
+  if(r.vp){
+    const vp = r.vp;
+    const bars = vp.profile.map(b=>{
+      const isPoc = Math.abs(b.p - vp.poc) <= vp.band/1.4;
+      const here = Math.abs(b.p - r.price) <= vp.band/1.4;
+      return `<div class="vpbar ${b.v>=0.55?'hot':''} ${here?'here':''}" style="width:${Math.max(4,b.v*100)}%" title="${b.p.toFixed(2)}"></div>`;
+    }).join('');
+    let stat = '';
+    if(vp.touches > 0){
+      const bp = Math.round(vp.bounces/vp.touches*100);
+      stat = `📊 พฤติกรรมที่โซน POC (120 วัน): ราคาวิ่งเข้าโซน ${vp.touches} ครั้ง → เด้งกลับ ${vp.bounces} ครั้ง (${bp}%) · ทะลุผ่าน ${vp.breaks} ครั้ง`;
+    }
+    const pos = r.price > vp.vah ? '🟢 เหนือ Value Area' : r.price < vp.val ? '🔴 ใต้ Value Area' : '⚪ ในค่ากลางตลาด';
+    vpBlock = `<div class="vpbox">
+      <div class="vph">📐 Volume Profile — โซนสำคัญอัตโนมัติ <span style="color:var(--muted);font-weight:400">(${pos})</span></div>
+      <div class="vpflex">
+        <div class="vpchart">${bars}</div>
+        <div class="vplv">
+          <div class="lvrow"><span>VAH (ขอบบน Value Area)</span><b class="down">${fmt(vp.vah)}</b></div>
+          <div class="lvrow"><span>POC (วอลุ่มหนาแน่นสุด)</span><b style="color:var(--blue)">${fmt(vp.poc)}</b></div>
+          <div class="lvrow"><span>VAL (ขอบล่าง Value Area)</span><b class="up">${fmt(vp.val)}</b></div>
+          ${vp.hvn.length?`<div class="lvrow"><span>HVN โซนวอลุ่มหนา</span><b>${vp.hvn.slice(-3).map(x=>fmt(x)).join(' · ')}</b></div>`:''}
+          ${vp.lvn.length?`<div class="lvrow"><span>LVN โซนวอลุ่มบาง</span><b>${vp.lvn.slice(-3).map(x=>fmt(x)).join(' · ')}</b></div>`:''}
+        </div>
+      </div>
+      ${stat?`<div class="vpstat">${stat}</div>`:''}
+    </div>`;
+  }
+
+  // Predictive Analytics: ความน่าจะเป็น 5 วันข้างหน้าจากเหตุการณ์คล้ายกันในอดีต
+  let predBlock = '';
+  if(r.prediction){
+    const pu = Math.round(r.prediction.prob_up*100);
+    predBlock = `<div class="predict">
+      <div class="plabel"><span>🔮 โอกาสราคา<b class="up">ขึ้น</b>ใน 5 วัน (สถิติจากเหตุการณ์คล้ายกัน ${r.prediction.n} ครั้ง)</span><b>${pu}%</b></div>
+      <div class="pmeter"><i style="width:${pu}%"></i></div>
+    </div>`;
+  }
+
   const sigs = r.signals.filter(s=>s.weight>=1).map(s=>
     `<div class="sig"><span class="ic ${s.dir==='bull'?'up':'down'}">${s.dir==='bull'?'▲':'▼'}</span><span>${s.desc}</span></div>`
   ).join('');
@@ -293,6 +349,8 @@ function card(r){
       <div><span>เป้าหมาย:</span> <b>${fmt(r.target_suggest)}</b></div>
     </div>
     ${valBlock}
+    ${vpBlock}
+    ${predBlock}
     ${adviceBlock}
     <div class="sigs">${sigs}</div>
   </div>`;
