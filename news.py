@@ -354,6 +354,34 @@ FOMC_MEETINGS = [
     ("2027-06-08", "2027-06-09", True),
 ]
 
+# กำหนดประกาศเงินเฟ้อ CPI ปี 2026 (ตาราง BLS ทางการ, 8:30 เช้าเวลาสหรัฐ)
+CPI_RELEASES_2026 = [
+    "2026-01-13", "2026-02-13", "2026-03-11", "2026-04-10",
+    "2026-05-12", "2026-06-10", "2026-07-14", "2026-08-12",
+    "2026-09-11", "2026-10-14", "2026-11-10", "2026-12-10",
+]
+
+
+def _nfp_dates(months_ahead=8):
+    """ตัวเลขจ้างงาน (Nonfarm Payrolls): ศุกร์แรกของเดือน (เลื่อนถ้าตรงปีใหม่)"""
+    from datetime import date, timedelta
+    today = date.today()
+    out = []
+    y, m = today.year, today.month
+    for _ in range(months_ahead):
+        d = date(y, m, 1)
+        while d.weekday() != 4:
+            d += timedelta(days=1)
+        if m == 1 and d.day == 1:  # ตรงวันปีใหม่ → เลื่อนสัปดาห์ถัดไป
+            d += timedelta(days=7)
+        if d >= today:
+            out.append(d)
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
+    return out
+
+
 _earn_cache = {}  # ticker -> (ts, "YYYY-MM-DD" or None)
 
 
@@ -397,7 +425,21 @@ def get_calendar(tickers, force=False):
                        "ticker": None, "title": title,
                        "days": (start_d - today).days})
 
-    # 2) งบไตรมาสของหุ้นใน watchlist (แคชรายตัว 12 ชม.)
+    # 2) ดัชนีเศรษฐกิจสหรัฐที่กระทบตลาด
+    for d in _nfp_dates():
+        events.append({"date": str(d), "date_end": None, "type": "econ", "subtype": "nfp",
+                       "ticker": None,
+                       "title": "ตัวเลขจ้างงานสหรัฐ (Nonfarm Payrolls) — 8:30 เช้าสหรัฐ (~19:30-20:30 น. ไทย)",
+                       "days": (d - today).days})
+    for ds in CPI_RELEASES_2026:
+        d = dtm.strptime(ds, "%Y-%m-%d").date()
+        if d >= today:
+            events.append({"date": ds, "date_end": None, "type": "econ", "subtype": "cpi",
+                           "ticker": None,
+                           "title": "เงินเฟ้อสหรัฐ CPI — 8:30 เช้าสหรัฐ (~19:30-20:30 น. ไทย)",
+                           "days": (d - today).days})
+
+    # 3) งบไตรมาสของหุ้นใน watchlist (แคชรายตัว 12 ชม.)
     now = time.time()
     need = [t for t in tickers
             if force or t not in _earn_cache or now - _earn_cache[t][0] >= 43200]

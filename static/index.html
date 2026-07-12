@@ -149,6 +149,7 @@
   .cal-badge{padding:4px 12px;border-radius:8px;font-weight:800;font-size:.85rem;flex:none}
   .cb-fed{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow)}
   .cb-earn{background:rgba(88,166,255,.12);color:var(--blue);border:1px solid var(--blue)}
+  .cb-econ{background:var(--green-bg);color:var(--green);border:1px solid var(--green)}
   .cal-body{flex:1;min-width:200px;line-height:1.5}
   .cal-days{flex:none;font-size:.85rem;font-weight:700;color:var(--muted)}
   .cal-days.soon{color:var(--red)}
@@ -867,9 +868,12 @@ function calItem(ev){
   const d = new Date(ev.date + 'T00:00:00');
   const dayNum = d.getDate() + (ev.date_end ? '-' + new Date(ev.date_end+'T00:00:00').getDate() : '');
   const mon = THAI_MONTHS[d.getMonth()] + ' ' + (d.getFullYear()+543);
-  const isFed = ev.type === 'fed';
-  const badge = isFed ? '<span class="cal-badge cb-fed">🏛 Fed</span>'
-                      : '<span class="cal-badge cb-earn">📊 งบไตรมาส</span>';
+  let badge;
+  if(ev.type === 'fed') badge = '<span class="cal-badge cb-fed">🏛 Fed</span>';
+  else if(ev.type === 'econ') badge = ev.subtype === 'nfp'
+      ? '<span class="cal-badge cb-econ">👷 จ้างงาน</span>'
+      : '<span class="cal-badge cb-econ">🛒 เงินเฟ้อ CPI</span>';
+  else badge = '<span class="cal-badge cb-earn">📊 งบไตรมาส</span>';
   const tick = ev.ticker ? `<span class="ntick">${ev.ticker}</span>` : '';
   let daysTxt, soon = false;
   if(ev.days < 0 && ev.date_end && new Date(ev.date_end+'T00:00:00') >= new Date().setHours(0,0,0,0)){
