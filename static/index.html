@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>📈 Investing Pro</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpolygon points='32,4 56,18 56,46 32,60 8,46 8,18' fill='%230e8fd0'/%3E%3Cpolyline points='18,40 27,31 34,36 46,22' stroke='white' stroke-width='5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='46' cy='22' r='4' fill='white'/%3E%3C/svg%3E">
 <style>
   :root{
     --bg:#eef4f9; --card:#ffffff; --card2:#f2f7fb; --border:#d8e4ee;
@@ -163,6 +164,24 @@
   .cal-body{flex:1;min-width:200px;line-height:1.5}
   .cal-days{flex:none;font-size:.85rem;font-weight:700;color:var(--muted)}
   .cal-days.soon{color:var(--red)}
+  #hero{margin:18px 22px 0;border-radius:20px;position:relative;overflow:hidden;
+    background:linear-gradient(120deg,#085a9b,#0e8fd0 55%,#3bafe2);color:#fff;
+    display:flex;align-items:center;gap:24px;padding:26px 32px;flex-wrap:wrap;
+    box-shadow:0 8px 26px rgba(14,100,170,.28)}
+  #hero .hero-text{flex:1;min-width:260px;position:relative;z-index:2}
+  #hero h2{font-size:1.45rem;line-height:1.4;font-weight:800}
+  #hero h2 span{display:block;color:#cdeafb;font-weight:600;font-size:1.02rem;margin-top:4px}
+  #hero p{margin-top:10px;color:#e2f3fd;font-size:.9rem;line-height:1.5}
+  .src-badges{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .src-badges span{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);
+    padding:5px 14px;border-radius:16px;font-size:.78rem;font-weight:700;letter-spacing:.3px}
+  .hero-art{width:330px;max-width:100%;flex:none;margin-left:auto;position:relative;z-index:2}
+  #hero .hx{position:absolute;pointer-events:none;background:rgba(255,255,255,.07);
+    clip-path:polygon(25% 5%,75% 5%,100% 50%,75% 95%,25% 95%,0 50%)}
+  footer{margin-top:30px;border-top:1px solid var(--border);background:var(--card);
+    padding:22px;text-align:center;color:var(--muted);font-size:.84rem;line-height:1.8}
+  footer .fbrand{font-weight:800;color:var(--text);font-size:.95rem}
+  footer .fbrand b{color:var(--blue)}
   #portTabs{display:flex;gap:8px;flex-wrap:wrap;padding:14px 22px 0}
   .ptab{background:var(--card);border:1px solid var(--border);color:var(--muted);
     border-radius:18px;padding:8px 18px;font-weight:700;box-shadow:0 1px 6px rgba(15,60,105,.05)}
@@ -249,6 +268,59 @@
   </div>
 </header>
 
+<section id="hero">
+  <span class="hx" style="width:150px;height:150px;right:-40px;top:-50px"></span>
+  <span class="hx" style="width:80px;height:80px;right:90px;bottom:-30px"></span>
+  <span class="hx" style="width:56px;height:56px;left:-18px;bottom:-18px"></span>
+  <div class="hero-text">
+    <h2>วิเคราะห์หุ้นอย่างมืออาชีพ<span>ตัดสินใจบนข้อมูลจริงจากแหล่งที่เชื่อถือได้</span></h2>
+    <p>เทคนิคอล 10+ อินดิเคเตอร์ · Volume Profile · ประเมินความคุ้มค่า P/E · ข่าวแปลไทย ·
+       ข้อมูลวงในจากรายงาน SEC · ปฏิทิน Fed และดัชนีเศรษฐกิจ</p>
+    <div class="src-badges">
+      <span>Yahoo Finance</span><span>SEC Form 4</span><span>Federal Reserve</span><span>BLS</span><span>CNBC</span><span>MarketWatch</span>
+    </div>
+  </div>
+  <svg class="hero-art" viewBox="0 0 360 190" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <linearGradient id="areaG" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ffffff" stop-opacity=".45"/>
+        <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <!-- เส้นตาราง -->
+    <g stroke="rgba(255,255,255,.18)" stroke-width="1">
+      <line x1="0" y1="45" x2="360" y2="45"/><line x1="0" y1="90" x2="360" y2="90"/>
+      <line x1="0" y1="135" x2="360" y2="135"/>
+    </g>
+    <!-- ตึกเมือง -->
+    <g fill="rgba(255,255,255,.22)">
+      <rect x="18" y="120" width="26" height="70" rx="2"/>
+      <rect x="52" y="95" width="30" height="95" rx="2"/>
+      <rect x="90" y="135" width="22" height="55" rx="2"/>
+      <rect x="120" y="105" width="28" height="85" rx="2"/>
+      <rect x="156" y="125" width="24" height="65" rx="2"/>
+    </g>
+    <!-- แท่งเทียน -->
+    <g stroke-width="2">
+      <line x1="215" y1="95" x2="215" y2="150" stroke="rgba(255,255,255,.85)"/>
+      <rect x="208" y="105" width="14" height="30" rx="2" fill="#8fe3b0"/>
+      <line x1="245" y1="75" x2="245" y2="130" stroke="rgba(255,255,255,.85)"/>
+      <rect x="238" y="85" width="14" height="28" rx="2" fill="#ffb3b3"/>
+      <line x1="275" y1="55" x2="275" y2="115" stroke="rgba(255,255,255,.85)"/>
+      <rect x="268" y="65" width="14" height="34" rx="2" fill="#8fe3b0"/>
+      <line x1="305" y1="35" x2="305" y2="90" stroke="rgba(255,255,255,.85)"/>
+      <rect x="298" y="45" width="14" height="30" rx="2" fill="#8fe3b0"/>
+    </g>
+    <!-- เส้นกราฟขาขึ้น -->
+    <path d="M10 160 L70 140 L120 148 L170 112 L220 122 L265 84 L312 52 L348 30"
+          fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M10 160 L70 140 L120 148 L170 112 L220 122 L265 84 L312 52 L348 30 L348 190 L10 190 Z"
+          fill="url(#areaG)"/>
+    <circle cx="348" cy="30" r="6" fill="#ffffff"/>
+    <circle cx="348" cy="30" r="11" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2"/>
+  </svg>
+</section>
+
 <div id="portTabs"></div>
 <div id="portbar">
   <div class="pb-box">💼 มูลค่าพอร์ตรวม:
@@ -288,6 +360,12 @@
   </div>
   <div id="calList"><div class="news-loading">⏳ กำลังโหลด...</div></div>
 </div>
+
+<footer>
+  <div class="fbrand">📊 Investing <b>Pro</b> — Smart Technical Analysis</div>
+  <div>ข้อมูลจากแหล่งทางการ: Yahoo Finance · OpenInsider (SEC Form 4) · federalreserve.gov · BLS · CNBC · MarketWatch</div>
+  <div>⚠️ เครื่องมือวิเคราะห์เพื่อประกอบการตัดสินใจเท่านั้น ไม่ใช่คำแนะนำการลงทุน — การลงทุนมีความเสี่ยง ผู้ลงทุนควรศึกษาข้อมูลก่อนตัดสินใจ</div>
+</footer>
 
 <div id="toast"></div>
 
@@ -759,6 +837,7 @@ let insiderLoaded = false;
 let calendarLoaded = false;
 
 function switchPage(page){
+  document.getElementById('hero').style.display = page==='stocks' ? 'flex' : 'none';
   document.getElementById('portTabs').style.display = page==='stocks' ? 'flex' : 'none';
   document.getElementById('portbar').style.display = page==='stocks' ? 'flex' : 'none';
   document.getElementById('summary').style.display = page==='stocks' ? 'flex' : 'none';
