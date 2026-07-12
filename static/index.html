@@ -107,6 +107,25 @@
   .predict .plabel{display:flex;justify-content:space-between;font-size:.83rem;margin-bottom:4px}
   .pmeter{height:10px;border-radius:5px;background:var(--red-bg);overflow:hidden}
   .pmeter i{display:block;height:100%;background:var(--green);border-radius:5px 0 0 5px}
+  #portbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 22px 0;font-size:.9rem}
+  #portbar .pb-box{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);
+    border-radius:10px;padding:8px 14px}
+  #portbar input{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:7px;
+    padding:6px 10px;width:130px;font-size:.9rem;outline:none;text-align:right}
+  #portbar input:focus{border-color:var(--blue)}
+  #portbar .hint{color:var(--muted);font-size:.8rem}
+  .alloc{margin-top:10px;padding:12px 14px;border-radius:10px;background:var(--card2);font-size:.85rem}
+  .alloc .ah{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;
+    font-weight:800;color:var(--text);margin-bottom:8px}
+  .alloc .ainputs{font-weight:400;color:var(--muted);display:flex;align-items:center;gap:5px}
+  .alloc input{background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:6px;
+    padding:4px 7px;width:80px;font-size:.84rem;outline:none;text-align:right}
+  .alloc input.tgt{width:52px}
+  .alloc input:focus{border-color:var(--blue)}
+  .abar{height:9px;border-radius:5px;background:var(--bg);overflow:hidden;margin-bottom:6px}
+  .abar i{display:block;height:100%;border-radius:5px 0 0 5px;transition:.3s}
+  .atext{line-height:1.5}
+  .amuted{color:var(--muted)}
   .tabs{display:flex;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:4px}
   .tab{background:none;color:var(--muted);padding:7px 18px;border-radius:7px;font-weight:700}
   .tab.active{background:var(--blue);color:#0d1117}
@@ -169,6 +188,12 @@
   <button class="btn-green" id="scanBtn" onclick="scanAll()">🔄 สแกนทั้งหมด</button>
 </header>
 
+<div id="portbar">
+  <div class="pb-box">💼 มูลค่าพอร์ตรวม:
+    <input id="portTotalInp" type="number" min="0" placeholder="เช่น 10000" onchange="updPortTotal(this.value)">
+  </div>
+  <span class="hint">ใช้คำนวณสัดส่วนแต่ละหุ้น — กรอกหน่วยเดียวกับมูลค่าถือครองในการ์ด (เช่น USD ทั้งคู่) · บันทึกในเบราว์เซอร์นี้</span>
+</div>
 <div id="summary"></div>
 <div id="grid"></div>
 
@@ -218,6 +243,62 @@ function saveWatchlist(){
   newsLoaded = false; insiderLoaded = false;   // ให้ข่าว/วงในโหลดใหม่ตามลิสต์ล่าสุด
 }
 function tickersQS(){ return 'tickers=' + encodeURIComponent(watchlist.join(',')); }
+
+// ===== เครื่องคิดสัดส่วนพอร์ต: เก็บในเบราว์เซอร์ของแต่ละคน =====
+let portTotal = parseFloat(localStorage.getItem('ip_port_total')) || 0;
+let positions = {};
+try{ positions = JSON.parse(localStorage.getItem('ip_positions')) || {}; }catch(e){}
+function savePort(){
+  localStorage.setItem('ip_port_total', portTotal || 0);
+  localStorage.setItem('ip_positions', JSON.stringify(positions));
+}
+function updPortTotal(v){
+  portTotal = parseFloat(v) || 0; savePort();
+  Object.keys(results).forEach(t=>{
+    const el = document.getElementById('alo-'+t);
+    if(el && results[t] && !results[t].error) el.innerHTML = allocOut(results[t]);
+  });
+}
+function updPos(t, k, v){
+  if(!positions[t]) positions[t] = {hold: 0, target: 10};
+  positions[t][k] = parseFloat(v) || 0;
+  savePort();
+  const el = document.getElementById('alo-'+t);
+  if(el && results[t] && !results[t].error) el.innerHTML = allocOut(results[t]);
+}
+function allocOut(r){
+  const t = r.ticker, p = positions[t] || {};
+  const hold = p.hold || 0;
+  const target = (p.target != null && p.target > 0) ? p.target : 10;
+  if(!portTotal) return '<div class="amuted">💡 กรอก "มูลค่าพอร์ตรวม" ด้านบนก่อน ระบบจะคำนวณสัดส่วนให้อัตโนมัติ</div>';
+  const curPct = hold / portTotal * 100;
+  const budget = portTotal * target / 100;
+  const remain = budget - hold;
+  const fill = budget > 0 ? Math.min(hold / budget * 100, 100) : 0;
+  const over = remain < -0.005 * portTotal;
+  const barColor = over ? 'var(--red)' : (fill >= 85 ? 'var(--yellow)' : 'var(--green)');
+  let msg;
+  if(over){
+    msg = '— <b class="down">เกินสัดส่วนไป ' + fmt(-remain) + '</b> ถ้าจะรักษาวินัยควรลด ไม่ควรเติม';
+  } else {
+    const shares = r.price > 0 ? Math.floor(remain / r.price * 100) / 100 : 0;
+    msg = '— เติมได้อีก <b class="up">' + fmt(remain) + '</b>' + (shares >= 0.01 ? ' (~' + shares + ' หุ้น @ ราคาปัจจุบัน)' : '');
+  }
+  return '<div class="abar"><i style="width:' + fill + '%;background:' + barColor + '"></i></div>' +
+    '<div class="atext">ถืออยู่ <b>' + curPct.toFixed(1) + '%</b> / เป้า ' + target + '% ' + msg + '</div>';
+}
+function allocBlock(r){
+  const t = r.ticker, p = positions[t] || {};
+  const hold = p.hold || '';
+  const target = (p.target != null && p.target > 0) ? p.target : 10;
+  return '<div class="alloc">' +
+    '<div class="ah"><span>💼 สัดส่วนพอร์ต</span>' +
+    '<span class="ainputs">ถืออยู่ <input type="number" min="0" value="' + hold + '" placeholder="มูลค่า" ' +
+    'onchange="updPos(\'' + t + '\',\'hold\',this.value)"> เป้า ' +
+    '<input class="tgt" type="number" min="0" max="100" value="' + target + '" ' +
+    'onchange="updPos(\'' + t + '\',\'target\',this.value)"> %</span></div>' +
+    '<div id="alo-' + t + '">' + allocOut(r) + '</div></div>';
+}
 
 function toast(msg){
   const t = document.getElementById('toast');
@@ -349,6 +430,7 @@ function card(r){
       <div><span>เป้าหมาย:</span> <b>${fmt(r.target_suggest)}</b></div>
     </div>
     ${valBlock}
+    ${allocBlock(r)}
     ${vpBlock}
     ${predBlock}
     ${adviceBlock}
@@ -427,6 +509,7 @@ let newsLoaded = false;
 let insiderLoaded = false;
 
 function switchPage(page){
+  document.getElementById('portbar').style.display = page==='stocks' ? 'flex' : 'none';
   document.getElementById('summary').style.display = page==='stocks' ? 'flex' : 'none';
   document.getElementById('grid').style.display = page==='stocks' ? 'grid' : 'none';
   document.getElementById('page-news').style.display = page==='news' ? 'block' : 'none';
@@ -560,6 +643,7 @@ setInterval(()=>{
   if(document.getElementById('page-news').style.display !== 'none') loadNews(false);
 }, 300000);
 
+if(portTotal) document.getElementById('portTotalInp').value = portTotal;
 scanAll();
 </script>
 </body>
