@@ -140,6 +140,12 @@
   #authMsg{font-size:.8rem;color:var(--muted);line-height:1.4;min-height:1em}
   #authMsg.err{color:var(--red)}
   #authMsg.ok{color:var(--green)}
+  #portTabs{display:flex;gap:8px;flex-wrap:wrap;padding:14px 22px 0}
+  .ptab{background:var(--card);border:1px solid var(--border);color:var(--muted);
+    border-radius:10px;padding:8px 16px;font-weight:700}
+  .ptab.active{background:var(--blue);color:#0d1117;border-color:var(--blue)}
+  .ptab.pedit{padding:8px 12px}
+  .ptab:hover{border-color:var(--blue)}
   .tabs{display:flex;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:4px}
   .tab{background:none;color:var(--muted);padding:7px 18px;border-radius:7px;font-weight:700}
   .tab.active{background:var(--blue);color:#0d1117}
@@ -218,6 +224,7 @@
   </div>
 </header>
 
+<div id="portTabs"></div>
 <div id="portbar">
   <div class="pb-box">💼 มูลค่าพอร์ตรวม:
     <input id="portTotalInp" type="number" min="0" placeholder="เช่น 10000" onchange="updPortTotal(this.value)">
@@ -256,20 +263,90 @@ const grid = document.getElementById('grid');
 const summary = document.getElementById('summary');
 let results = {};
 
-// ===== watchlist ส่วนตัว: เก็บในเบราว์เซอร์ของแต่ละคน (localStorage) =====
+// ===== หลายพอร์ต: แต่ละพอร์ตมี watchlist + มูลค่าพอร์ต + สัดส่วนของตัวเอง =====
+let ports = null, activePort = 0, portsInited = false;
 let watchlist = null;
-async function getWatchlist(){
-  if(watchlist) return watchlist;
-  try{ watchlist = JSON.parse(localStorage.getItem('ip_watchlist')) || null; }catch(e){}
-  if(!watchlist || !watchlist.length){
-    try{ watchlist = await (await fetch('/api/watchlist')).json(); }
-    catch(e){ watchlist = ['NVDA','AAPL','QQQM']; }
-    saveWatchlist();
+
+function emptyPort(n){ return {name:'พอร์ต '+n, watchlist:[], port_total:0, positions:{}}; }
+
+function loadPorts(){
+  try{
+    const s = JSON.parse(localStorage.getItem('ip_ports'));
+    if(s && s.ports && s.ports.length){ ports = s.ports; activePort = s.active || 0; }
+  }catch(e){}
+  if(!ports){
+    // ย้ายข้อมูลรุ่นเก่า (พอร์ตเดียว) เข้าเป็นพอร์ต 1
+    let wl = null, pos = {}, pt = 0;
+    try{ wl = JSON.parse(localStorage.getItem('ip_watchlist')); }catch(e){}
+    try{ pos = JSON.parse(localStorage.getItem('ip_positions')) || {}; }catch(e){}
+    pt = parseFloat(localStorage.getItem('ip_port_total')) || 0;
+    ports = [ {name:'พอร์ต 1', watchlist: wl||[], port_total: pt, positions: pos},
+              emptyPort(2), emptyPort(3) ];
+    activePort = 0;
   }
+  while(ports.length < 3) ports.push(emptyPort(ports.length+1));
+  activePort = Math.max(0, Math.min(ports.length-1, activePort));
+}
+function loadActiveIntoGlobals(){
+  const p = ports[activePort];
+  watchlist = p.watchlist || [];
+  portTotal = p.port_total || 0;
+  positions = p.positions || {};
+  const inp = document.getElementById('portTotalInp');
+  if(inp) inp.value = portTotal || '';
+  renderPortTabs();
+}
+function persistPorts(){
+  ports[activePort].watchlist = watchlist || [];
+  ports[activePort].port_total = portTotal || 0;
+  ports[activePort].positions = positions || {};
+  localStorage.setItem('ip_ports', JSON.stringify({active: activePort, ports: ports}));
+}
+async function initPorts(){
+  if(portsInited) return;
+  const fresh = !localStorage.getItem('ip_ports') && !localStorage.getItem('ip_watchlist');
+  loadPorts();
+  if(fresh && !ports[0].watchlist.length){
+    try{ ports[0].watchlist = await (await fetch('/api/watchlist')).json(); }
+    catch(e){ ports[0].watchlist = ['NVDA','AAPL','QQQM']; }
+  }
+  loadActiveIntoGlobals();
+  persistPorts();
+  portsInited = true;
+}
+function renderPortTabs(){
+  const el = document.getElementById('portTabs');
+  if(!el || !ports) return;
+  el.innerHTML = ports.map((p,i)=>
+    `<button class="ptab ${i===activePort?'active':''}" onclick="switchPort(${i})">📁 ${p.name}</button>`
+  ).join('') + `<button class="ptab pedit" title="เปลี่ยนชื่อพอร์ตนี้" onclick="renamePort()">✏️</button>`;
+}
+function switchPort(i){
+  if(i === activePort){ return; }
+  persistPorts();
+  activePort = i;
+  loadActiveIntoGlobals();
+  persistPorts();
+  results = {};
+  newsLoaded = false; insiderLoaded = false;
+  syncUp();
+  scanAll();
+}
+function renamePort(){
+  const name = prompt('ตั้งชื่อพอร์ตนี้:', ports[activePort].name);
+  if(name && name.trim()){
+    ports[activePort].name = name.trim().slice(0,30);
+    persistPorts(); renderPortTabs(); syncUp();
+    toast('✏️ เปลี่ยนชื่อเป็น "' + ports[activePort].name + '" แล้ว');
+  }
+}
+
+async function getWatchlist(){
+  await initPorts();
   return watchlist;
 }
 function saveWatchlist(){
-  localStorage.setItem('ip_watchlist', JSON.stringify(watchlist));
+  persistPorts();
   newsLoaded = false; insiderLoaded = false;   // ให้ข่าว/วงในโหลดใหม่ตามลิสต์ล่าสุด
   syncUp();                                     // ถ้าล็อกอินอยู่ ซิงก์ขึ้นบัญชีอัตโนมัติ
 }
@@ -300,14 +377,19 @@ function updateAuthUI(){
 }
 function applyServerData(d){
   d = d || {};
-  const hasServer = d.watchlist && d.watchlist.length;
+  // โครงสร้างเก่า (พอร์ตเดียว) → ห่อเป็น ports
+  if(!d.ports && d.watchlist && d.watchlist.length){
+    d = {ports: [{name:'พอร์ต 1', watchlist:d.watchlist, port_total:d.port_total||0, positions:d.positions||{}}], active: 0};
+  }
+  const hasServer = d.ports && d.ports.length && d.ports.some(p => p.watchlist && p.watchlist.length);
   if(hasServer){
-    watchlist = d.watchlist;
-    portTotal = d.port_total || 0;
-    positions = d.positions || {};
-    localStorage.setItem('ip_watchlist', JSON.stringify(watchlist));
-    savePortLocal();
-    document.getElementById('portTotalInp').value = portTotal || '';
+    ports = d.ports;
+    while(ports.length < 3) ports.push(emptyPort(ports.length+1));
+    activePort = Math.max(0, Math.min(ports.length-1, d.active || 0));
+    portsInited = true;
+    loadActiveIntoGlobals();
+    persistPorts();
+    results = {};
     newsLoaded = false; insiderLoaded = false;
     scanAll();
   } else {
@@ -344,13 +426,14 @@ function doLogout(){
   toast('👋 ออกจากระบบแล้ว');
 }
 function syncUp(){
-  if(!authToken) return;
+  if(!authToken || !ports) return;
   clearTimeout(syncTimer);
   syncTimer = setTimeout(async ()=>{
     try{
+      persistPorts();
       const r = await fetch('/api/auth/sync', {method:'POST',
         headers:{'Content-Type':'application/json','X-Auth':authToken},
-        body: JSON.stringify({data:{watchlist: watchlist||[], port_total: portTotal||0, positions: positions||{}}})});
+        body: JSON.stringify({data:{ports: ports, active: activePort}})});
       if(r.status === 401){ authToken = null; updateAuthUI(); toast('⚠️ เซสชันหมดอายุ — ล็อกอินใหม่เพื่อซิงก์ต่อ'); }
     }catch(e){}
   }, 800);
@@ -362,14 +445,7 @@ async function restoreSession(){
     if(r.ok){
       const j = await r.json();
       authUser = j.user; updateAuthUI();
-      const d = j.data || {};
-      if(d.watchlist && d.watchlist.length){
-        watchlist = d.watchlist; portTotal = d.port_total || 0; positions = d.positions || {};
-        localStorage.setItem('ip_watchlist', JSON.stringify(watchlist));
-        savePortLocal();
-        document.getElementById('portTotalInp').value = portTotal || '';
-        render(); scanAll();
-      } else { syncUp(); }
+      applyServerData(j.data);
     } else {
       authToken = null; localStorage.removeItem('ip_token');
       updateAuthUI();
@@ -381,12 +457,9 @@ async function restoreSession(){
 let portTotal = parseFloat(localStorage.getItem('ip_port_total')) || 0;
 let positions = {};
 try{ positions = JSON.parse(localStorage.getItem('ip_positions')) || {}; }catch(e){}
-function savePortLocal(){
-  localStorage.setItem('ip_port_total', portTotal || 0);
-  localStorage.setItem('ip_positions', JSON.stringify(positions));
-}
+function savePortLocal(){ persistPorts(); }
 function savePort(){
-  savePortLocal();
+  persistPorts();
   syncUp();  // ถ้าล็อกอินอยู่ ซิงก์ขึ้นบัญชีอัตโนมัติ
 }
 function updPortTotal(v){
@@ -600,6 +673,12 @@ async function scanAll(){
   btn.disabled = true; btn.textContent = '⏳ กำลังสแกน...';
   const list = await getWatchlist();
   results = {};
+  if(!list.length){
+    grid.innerHTML = '<div class="news-loading">📁 พอร์ตนี้ยังว่าง — พิมพ์ชื่อหุ้นในช่อง "เพิ่มหุ้น" ด้านบนเพื่อเริ่มสร้างวอทช์ลิสต์</div>';
+    summary.innerHTML = '';
+    btn.disabled = false; btn.textContent = '🔄 สแกนทั้งหมด';
+    return;
+  }
   grid.innerHTML = list.map(t=>`<div class="skeleton" id="sk-${t}">${t} …</div>`).join('');
   summary.innerHTML = '';
   await Promise.all(list.map(async t=>{
@@ -646,6 +725,7 @@ let newsLoaded = false;
 let insiderLoaded = false;
 
 function switchPage(page){
+  document.getElementById('portTabs').style.display = page==='stocks' ? 'flex' : 'none';
   document.getElementById('portbar').style.display = page==='stocks' ? 'flex' : 'none';
   document.getElementById('summary').style.display = page==='stocks' ? 'flex' : 'none';
   document.getElementById('grid').style.display = page==='stocks' ? 'grid' : 'none';
@@ -780,10 +860,12 @@ setInterval(()=>{
   if(document.getElementById('page-news').style.display !== 'none') loadNews(false);
 }, 300000);
 
-if(portTotal) document.getElementById('portTotalInp').value = portTotal;
-updateAuthUI();
-restoreSession();
-scanAll();
+(async ()=>{
+  await initPorts();
+  updateAuthUI();
+  restoreSession();
+  scanAll();
+})();
 </script>
 </body>
 </html>

@@ -55,19 +55,20 @@ def _auth_user():
     return _tokens.get(token)
 
 
-def _clean_user_data(d):
-    """กรองข้อมูลที่ client ส่งมาก่อนบันทึก"""
-    d = d or {}
-    out = {"watchlist": [], "port_total": 0, "positions": {}}
-    for t in (d.get("watchlist") or [])[:30]:
+def _clean_port(p, default_name="พอร์ต 1"):
+    """กรองข้อมูลพอร์ตเดียว (watchlist + มูลค่าพอร์ต + สัดส่วน)"""
+    p = p or {}
+    out = {"name": str(p.get("name") or default_name)[:30],
+           "watchlist": [], "port_total": 0, "positions": {}}
+    for t in (p.get("watchlist") or [])[:30]:
         s = str(t).strip().upper()[:15]
         if s and re.match(r"^[A-Z0-9.\-]+$", s):
             out["watchlist"].append(s)
     try:
-        out["port_total"] = max(0.0, float(d.get("port_total") or 0))
+        out["port_total"] = max(0.0, float(p.get("port_total") or 0))
     except (TypeError, ValueError):
         pass
-    for k, v in list((d.get("positions") or {}).items())[:60]:
+    for k, v in list((p.get("positions") or {}).items())[:60]:
         try:
             out["positions"][str(k).strip().upper()[:15]] = {
                 "hold": max(0.0, float(v.get("hold", 0) or 0)),
@@ -76,6 +77,20 @@ def _clean_user_data(d):
         except (TypeError, ValueError, AttributeError):
             continue
     return out
+
+
+def _clean_user_data(d):
+    """รองรับหลายพอร์ต {ports:[...], active:n} และโครงสร้างเก่าแบบพอร์ตเดียว"""
+    d = d or {}
+    if d.get("ports"):
+        ports = [_clean_port(p, f"พอร์ต {i+1}") for i, p in enumerate(d["ports"][:5])]
+        try:
+            active = max(0, min(len(ports) - 1, int(d.get("active") or 0)))
+        except (TypeError, ValueError):
+            active = 0
+        return {"ports": ports, "active": active}
+    # โครงสร้างเก่า: พอร์ตเดียว → ห่อเป็น ports
+    return {"ports": [_clean_port(d)], "active": 0}
 
 
 @app.route("/api/auth/register", methods=["POST"])
@@ -93,7 +108,7 @@ def auth_register():
             return jsonify({"error": f"ชื่อ '{user}' ถูกใช้แล้ว — ลองชื่ออื่น หรือเข้าสู่ระบบ"}), 409
         salt = secrets.token_hex(16)
         users[user] = {"salt": salt, "hash": _hash_pw(pw, salt),
-                       "data": {"watchlist": [], "port_total": 0, "positions": {}}}
+                       "data": {"ports": [], "active": 0}}
         _save_users(users)
     token = secrets.token_hex(24)
     _tokens[token] = user
