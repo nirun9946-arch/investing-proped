@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 alert_state.json
+users.json
 reports/
 tunnel.log
 cloudflared.exe

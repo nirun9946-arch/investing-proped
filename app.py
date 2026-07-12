@@ -14,11 +14,130 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 from flask import Flask, jsonify, request, send_from_directory
 
+import hashlib
+import re
+import secrets
+import threading
+
 import investing_pro as core
 import news as news_mod
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, static_folder=os.path.join(BASE_DIR, "static"))
+
+# ----------------------------------------------------------------------
+# ระบบบัญชีผู้ใช้: watchlist/พอร์ตส่วนตัว ป้องกันด้วยรหัสผ่าน (PBKDF2 hash)
+# ----------------------------------------------------------------------
+USERS_PATH = os.path.join(BASE_DIR, "users.json")
+_users_lock = threading.Lock()
+_tokens = {}  # token -> username (in-memory session)
+
+
+def _load_users():
+    if os.path.exists(USERS_PATH):
+        with open(USERS_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def _save_users(users):
+    with open(USERS_PATH, "w", encoding="utf-8") as f:
+        json.dump(users, f, ensure_ascii=False)
+
+
+def _hash_pw(password, salt_hex):
+    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"),
+                               bytes.fromhex(salt_hex), 100_000).hex()
+
+
+def _auth_user():
+    token = request.headers.get("X-Auth", "")
+    return _tokens.get(token)
+
+
+def _clean_user_data(d):
+    """กรองข้อมูลที่ client ส่งมาก่อนบันทึก"""
+    d = d or {}
+    out = {"watchlist": [], "port_total": 0, "positions": {}}
+    for t in (d.get("watchlist") or [])[:30]:
+        s = str(t).strip().upper()[:15]
+        if s and re.match(r"^[A-Z0-9.\-]+$", s):
+            out["watchlist"].append(s)
+    try:
+        out["port_total"] = max(0.0, float(d.get("port_total") or 0))
+    except (TypeError, ValueError):
+        pass
+    for k, v in list((d.get("positions") or {}).items())[:60]:
+        try:
+            out["positions"][str(k).strip().upper()[:15]] = {
+                "hold": max(0.0, float(v.get("hold", 0) or 0)),
+                "target": max(0.0, min(100.0, float(v.get("target", 10) or 10))),
+            }
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return out
+
+
+@app.route("/api/auth/register", methods=["POST"])
+def auth_register():
+    body = request.json or {}
+    user = str(body.get("user", "")).strip().lower()
+    pw = str(body.get("pass", ""))
+    if not re.match(r"^[a-z0-9_]{3,20}$", user):
+        return jsonify({"error": "ชื่อผู้ใช้ต้องเป็น a-z, 0-9, _ ยาว 3-20 ตัว"}), 400
+    if len(pw) < 4:
+        return jsonify({"error": "รหัสผ่านอย่างน้อย 4 ตัวอักษร"}), 400
+    with _users_lock:
+        users = _load_users()
+        if user in users:
+            return jsonify({"error": f"ชื่อ '{user}' ถูกใช้แล้ว — ลองชื่ออื่น หรือเข้าสู่ระบบ"}), 409
+        salt = secrets.token_hex(16)
+        users[user] = {"salt": salt, "hash": _hash_pw(pw, salt),
+                       "data": {"watchlist": [], "port_total": 0, "positions": {}}}
+        _save_users(users)
+    token = secrets.token_hex(24)
+    _tokens[token] = user
+    return jsonify({"ok": True, "token": token, "user": user, "data": users[user]["data"]})
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def auth_login():
+    body = request.json or {}
+    user = str(body.get("user", "")).strip().lower()
+    pw = str(body.get("pass", ""))
+    users = _load_users()
+    rec = users.get(user)
+    if not rec or _hash_pw(pw, rec["salt"]) != rec["hash"]:
+        return jsonify({"error": "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"}), 401
+    token = secrets.token_hex(24)
+    _tokens[token] = user
+    return jsonify({"ok": True, "token": token, "user": user, "data": rec.get("data", {})})
+
+
+@app.route("/api/auth/me")
+def auth_me():
+    user = _auth_user()
+    if not user:
+        return jsonify({"error": "เซสชันหมดอายุ"}), 401
+    rec = _load_users().get(user)
+    if not rec:
+        return jsonify({"error": "ไม่พบบัญชี"}), 401
+    return jsonify({"ok": True, "user": user, "data": rec.get("data", {})})
+
+
+@app.route("/api/auth/sync", methods=["POST"])
+def auth_sync():
+    user = _auth_user()
+    if not user:
+        return jsonify({"error": "เซสชันหมดอายุ"}), 401
+    data = _clean_user_data((request.json or {}).get("data"))
+    with _users_lock:
+        users = _load_users()
+        if user not in users:
+            return jsonify({"error": "ไม่พบบัญชี"}), 401
+        users[user]["data"] = data
+        _save_users(users)
+    return jsonify({"ok": True})
 
 
 def read_config():

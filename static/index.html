@@ -126,6 +126,20 @@
   .abar i{display:block;height:100%;border-radius:5px 0 0 5px;transition:.3s}
   .atext{line-height:1.5}
   .amuted{color:var(--muted)}
+  #authWrap{position:relative}
+  #authBtn{background:var(--card);border:1px solid var(--border);color:var(--text);font-weight:700}
+  #authBtn.on{border-color:var(--green);color:var(--green)}
+  #authPanel{position:absolute;top:115%;right:0;background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:14px;display:none;flex-direction:column;gap:8px;width:250px;z-index:60;
+    box-shadow:0 8px 24px rgba(0,0,0,.4)}
+  #authPanel input{background:var(--card2);border:1px solid var(--border);color:var(--text);
+    border-radius:8px;padding:8px 10px;font-size:.9rem;outline:none}
+  #authPanel input:focus{border-color:var(--blue)}
+  #authPanel .arow{display:flex;gap:8px}
+  #authPanel .arow button{flex:1}
+  #authMsg{font-size:.8rem;color:var(--muted);line-height:1.4;min-height:1em}
+  #authMsg.err{color:var(--red)}
+  #authMsg.ok{color:var(--green)}
   .tabs{display:flex;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:4px}
   .tab{background:none;color:var(--muted);padding:7px 18px;border-radius:7px;font-weight:700}
   .tab.active{background:var(--blue);color:#0d1117}
@@ -186,6 +200,22 @@
     <button class="btn-blue" onclick="addTicker()">＋ เพิ่ม</button>
   </div>
   <button class="btn-green" id="scanBtn" onclick="scanAll()">🔄 สแกนทั้งหมด</button>
+  <div id="authWrap">
+    <button id="authBtn" onclick="toggleAuth()">👤 เข้าสู่ระบบ</button>
+    <div id="authPanel">
+      <input id="authUser" placeholder="ชื่อผู้ใช้ (a-z, 0-9)" autocomplete="username">
+      <input id="authPass" type="password" placeholder="รหัสผ่าน" autocomplete="current-password"
+        onkeydown="if(event.key==='Enter')doLogin()">
+      <div class="arow">
+        <button class="btn-blue" onclick="doLogin()">เข้าสู่ระบบ</button>
+        <button class="btn-green" onclick="doRegister()">สมัครใหม่</button>
+      </div>
+      <div id="authMsg">ล็อกอินเพื่อเรียกวอทช์ลิสต์และพอร์ตของคุณจากทุกเครื่อง</div>
+      <div class="arow" id="logoutRow" style="display:none">
+        <button class="btn-blue" onclick="doLogout()">ออกจากระบบ</button>
+      </div>
+    </div>
+  </div>
 </header>
 
 <div id="portbar">
@@ -241,16 +271,123 @@ async function getWatchlist(){
 function saveWatchlist(){
   localStorage.setItem('ip_watchlist', JSON.stringify(watchlist));
   newsLoaded = false; insiderLoaded = false;   // ให้ข่าว/วงในโหลดใหม่ตามลิสต์ล่าสุด
+  syncUp();                                     // ถ้าล็อกอินอยู่ ซิงก์ขึ้นบัญชีอัตโนมัติ
 }
 function tickersQS(){ return 'tickers=' + encodeURIComponent(watchlist.join(',')); }
+
+// ===== บัญชีผู้ใช้: ล็อกอินด้วยรหัสผ่าน เรียกข้อมูลได้จากทุกเครื่อง =====
+let authToken = localStorage.getItem('ip_token') || null;
+let authUser = localStorage.getItem('ip_user') || null;
+let syncTimer = null;
+
+function toggleAuth(){
+  const p = document.getElementById('authPanel');
+  p.style.display = p.style.display === 'flex' ? 'none' : 'flex';
+}
+function authMsg(text, cls){
+  const m = document.getElementById('authMsg');
+  m.textContent = text; m.className = cls || '';
+}
+function updateAuthUI(){
+  const btn = document.getElementById('authBtn');
+  const loggedIn = !!authToken;
+  btn.textContent = loggedIn ? '✅ ' + authUser : '👤 เข้าสู่ระบบ';
+  btn.classList.toggle('on', loggedIn);
+  document.getElementById('logoutRow').style.display = loggedIn ? 'flex' : 'none';
+  document.getElementById('authUser').style.display = loggedIn ? 'none' : 'block';
+  document.getElementById('authPass').style.display = loggedIn ? 'none' : 'block';
+  document.querySelector('#authPanel .arow').style.display = loggedIn ? 'none' : 'flex';
+}
+function applyServerData(d){
+  d = d || {};
+  const hasServer = d.watchlist && d.watchlist.length;
+  if(hasServer){
+    watchlist = d.watchlist;
+    portTotal = d.port_total || 0;
+    positions = d.positions || {};
+    localStorage.setItem('ip_watchlist', JSON.stringify(watchlist));
+    savePortLocal();
+    document.getElementById('portTotalInp').value = portTotal || '';
+    newsLoaded = false; insiderLoaded = false;
+    scanAll();
+  } else {
+    syncUp();  // บัญชีใหม่/ข้อมูลว่าง — ส่งข้อมูลในเครื่องนี้ขึ้นไปเก็บ
+  }
+}
+async function authCall(path){
+  const user = document.getElementById('authUser').value.trim();
+  const pass = document.getElementById('authPass').value;
+  if(!user || !pass){ authMsg('กรอกชื่อผู้ใช้และรหัสผ่านก่อนครับ', 'err'); return; }
+  authMsg('⏳ กำลังดำเนินการ...');
+  try{
+    const r = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({user: user, pass: pass})});
+    const j = await r.json();
+    if(!r.ok){ authMsg('❌ ' + (j.error || 'ไม่สำเร็จ'), 'err'); return; }
+    authToken = j.token; authUser = j.user;
+    localStorage.setItem('ip_token', authToken);
+    localStorage.setItem('ip_user', authUser);
+    document.getElementById('authPass').value = '';
+    updateAuthUI();
+    authMsg('✅ ยินดีต้อนรับคุณ ' + j.user, 'ok');
+    toast('✅ เข้าสู่ระบบเป็น ' + j.user + ' แล้ว');
+    applyServerData(j.data);
+    setTimeout(()=>{ document.getElementById('authPanel').style.display='none'; }, 900);
+  }catch(e){ authMsg('❌ เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง', 'err'); }
+}
+function doLogin(){ authCall('/api/auth/login'); }
+function doRegister(){ authCall('/api/auth/register'); }
+function doLogout(){
+  authToken = null; authUser = null;
+  localStorage.removeItem('ip_token'); localStorage.removeItem('ip_user');
+  updateAuthUI(); authMsg('ออกจากระบบแล้ว — ข้อมูลบนเครื่องนี้ยังอยู่');
+  toast('👋 ออกจากระบบแล้ว');
+}
+function syncUp(){
+  if(!authToken) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(async ()=>{
+    try{
+      const r = await fetch('/api/auth/sync', {method:'POST',
+        headers:{'Content-Type':'application/json','X-Auth':authToken},
+        body: JSON.stringify({data:{watchlist: watchlist||[], port_total: portTotal||0, positions: positions||{}}})});
+      if(r.status === 401){ authToken = null; updateAuthUI(); toast('⚠️ เซสชันหมดอายุ — ล็อกอินใหม่เพื่อซิงก์ต่อ'); }
+    }catch(e){}
+  }, 800);
+}
+async function restoreSession(){
+  if(!authToken) return;
+  try{
+    const r = await fetch('/api/auth/me', {headers:{'X-Auth':authToken}});
+    if(r.ok){
+      const j = await r.json();
+      authUser = j.user; updateAuthUI();
+      const d = j.data || {};
+      if(d.watchlist && d.watchlist.length){
+        watchlist = d.watchlist; portTotal = d.port_total || 0; positions = d.positions || {};
+        localStorage.setItem('ip_watchlist', JSON.stringify(watchlist));
+        savePortLocal();
+        document.getElementById('portTotalInp').value = portTotal || '';
+        render(); scanAll();
+      } else { syncUp(); }
+    } else {
+      authToken = null; localStorage.removeItem('ip_token');
+      updateAuthUI();
+    }
+  }catch(e){}
+}
 
 // ===== เครื่องคิดสัดส่วนพอร์ต: เก็บในเบราว์เซอร์ของแต่ละคน =====
 let portTotal = parseFloat(localStorage.getItem('ip_port_total')) || 0;
 let positions = {};
 try{ positions = JSON.parse(localStorage.getItem('ip_positions')) || {}; }catch(e){}
-function savePort(){
+function savePortLocal(){
   localStorage.setItem('ip_port_total', portTotal || 0);
   localStorage.setItem('ip_positions', JSON.stringify(positions));
+}
+function savePort(){
+  savePortLocal();
+  syncUp();  // ถ้าล็อกอินอยู่ ซิงก์ขึ้นบัญชีอัตโนมัติ
 }
 function updPortTotal(v){
   portTotal = parseFloat(v) || 0; savePort();
@@ -644,6 +781,8 @@ setInterval(()=>{
 }, 300000);
 
 if(portTotal) document.getElementById('portTotalInp').value = portTotal;
+updateAuthUI();
+restoreSession();
 scanAll();
 </script>
 </body>
