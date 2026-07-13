@@ -234,6 +234,20 @@ def fundamentals(tk, price):
     if post and price:
         out["post_price"] = float(post)
         out["post_chg"] = (float(post) / price - 1) * 100
+
+    # แผนสำรอง: บางช่วง (เช่นสุดสัปดาห์) Yahoo ไม่ส่ง pre/post มา —
+    # ดึงราคาซื้อขายนอกเวลาล่าสุดจากกราฟราย 15 นาที (prepost) แทน
+    if price and not out["pre_price"] and not out["post_price"] \
+            and info.get("marketState") != "REGULAR":
+        try:
+            h = tk.history(period="1d", interval="15m", prepost=True)
+            if h is not None and not h.empty:
+                last_px = float(h["Close"].iloc[-1])
+                if abs(last_px - price) / price > 0.0005:
+                    out["post_price"] = last_px
+                    out["post_chg"] = (last_px / price - 1) * 100
+        except Exception:
+            pass
     out["pe"] = info.get("trailingPE")
     out["fwd_pe"] = info.get("forwardPE")
     peg = info.get("trailingPegRatio") or info.get("pegRatio")

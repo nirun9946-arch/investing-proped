@@ -656,8 +656,9 @@ function card(r){
   else if(r.rsi <= 30) rsiTag = '<span class="rsi-tag rsi-os">Oversold</span>';
 
   const mktMap = {REGULAR:['🟢 ตลาดเปิด','open'], CLOSED:['🌙 ตลาดปิด',''],
-    PRE:['🌅 ก่อนเปิดตลาด',''], POST:['🌆 หลังปิดตลาด','']};
-  const mk = mktMap[r.market_state] || null;
+    PRE:['🌅 ก่อนเปิดตลาด',''], PREPRE:['🌙 ตลาดปิด',''],
+    POST:['🌆 หลังปิดตลาด',''], POSTPOST:['🌆 หลังปิดตลาด','']};
+  const mk = mktMap[r.market_state] || (r.market_state ? ['🌙 ตลาดปิด',''] : null);
   const mktTag = mk ? `<span class="mkt ${mk[1]}">${mk[0]}</span>` : '';
 
   const vClassMap = {'ถูก':'vl-cheap','เหมาะสม':'vl-fair','ค่อนข้างแพง':'vl-exp','แพง':'vl-vexp'};
