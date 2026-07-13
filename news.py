@@ -119,55 +119,88 @@ def fetch_yahoo_one(t):
     return out
 
 
+_last_news = {"items": []}  # ข่าวชุดล่าสุดที่สำเร็จ — แผนสำรองเมื่อรอบใหม่ล้มเหลว
+
+
 def get_news(tickers, max_items=30, force=False):
-    """รวมข่าว RSS (แคชร่วม) + ข่าวรายหุ้นตาม watchlist ของผู้ใช้แต่ละคน (แคชรายตัว)"""
+    """รวมข่าว RSS (แคชร่วม) + ข่าวรายหุ้น — ทุกขั้นตอนมีเส้นตาย ไม่มีทางค้างทั้งหน้า"""
     now = time.time()
     tickers = [t.upper() for t in tickers][:15]
+    ex = concurrent.futures.ThreadPoolExecutor(max_workers=10)
+    try:
+        # 1) ข่าว RSS ส่วนกลาง — รอไม่เกิน 15 วิ แหล่งไหนช้าโดนข้าม
+        if force or not _feed_cache["items"] or now - _feed_cache["ts"] >= CACHE_SECONDS:
+            futs = [ex.submit(fetch_feed, n, u) for n, u in FEEDS]
+            done, _ = concurrent.futures.wait(futs, timeout=15)
+            feed_items = []
+            for f in done:
+                try:
+                    feed_items.extend(f.result())
+                except Exception:
+                    pass
+            if feed_items:
+                _feed_cache["ts"], _feed_cache["items"] = now, feed_items
 
-    # 1) ข่าว RSS ส่วนกลาง
-    if force or not _feed_cache["items"] or now - _feed_cache["ts"] >= CACHE_SECONDS:
-        feed_items = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
-            for rows in ex.map(lambda f: fetch_feed(*f), FEEDS):
-                feed_items.extend(rows)
-        _feed_cache["ts"], _feed_cache["items"] = now, feed_items
+        # 2) ข่าวรายหุ้น — เส้นตาย 15 วิ ตัวที่ค้างถูกทิ้งไว้ ไม่ลากทั้งหน้า
+        need = [t for t in tickers
+                if force or t not in _yahoo_cache or now - _yahoo_cache[t][0] >= CACHE_SECONDS]
+        if need:
+            futs = {ex.submit(fetch_yahoo_one, t): t for t in need}
+            done, _ = concurrent.futures.wait(futs, timeout=15)
+            for f in done:
+                try:
+                    _yahoo_cache[futs[f]] = (now, f.result())
+                except Exception:
+                    pass
+        if len(_yahoo_cache) > 200:
+            for k in sorted(_yahoo_cache, key=lambda k: _yahoo_cache[k][0])[:100]:
+                _yahoo_cache.pop(k, None)
 
-    # 2) ข่าวรายหุ้น — ดึงเฉพาะตัวที่แคชหมดอายุ
-    need = [t for t in tickers
-            if force or t not in _yahoo_cache or now - _yahoo_cache[t][0] >= CACHE_SECONDS]
-    if need:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
-            for t, rows in zip(need, ex.map(fetch_yahoo_one, need)):
-                _yahoo_cache[t] = (now, rows)
-    if len(_yahoo_cache) > 200:
-        for k in sorted(_yahoo_cache, key=lambda k: _yahoo_cache[k][0])[:100]:
-            _yahoo_cache.pop(k, None)
+        items = list(_feed_cache["items"])
+        for t in tickers:
+            if t in _yahoo_cache:
+                items.extend(_yahoo_cache[t][1])
 
-    items = list(_feed_cache["items"])
-    for t in tickers:
-        if t in _yahoo_cache:
-            items.extend(_yahoo_cache[t][1])
+        # เรียงใหม่สุดก่อน + ตัดข่าวซ้ำ (อ้างอิงตัวจริงในแคช เพื่อให้คำแปลติดถาวร)
+        seen, uniq = set(), []
+        for it in sorted(items, key=lambda x: -x["ts"]):
+            key = it["title"].lower()[:80]
+            if key in seen:
+                continue
+            seen.add(key)
+            uniq.append(it)
+        uniq = uniq[:max_items]
 
-    # เรียงใหม่สุดก่อน + ตัดข่าวซ้ำ (หัวข้อเหมือนกัน)
-    seen, uniq = set(), []
-    for it in sorted(items, key=lambda x: -x["ts"]):
-        key = it["title"].lower()[:80]
-        if key in seen:
-            continue
-        seen.add(key)
-        uniq.append(it)
-    uniq = uniq[:max_items]
+        # 3) แปลไทยเฉพาะข่าวที่ยังไม่มีคำแปล — งบเวลา 25 วิ
+        #    คำแปลถูกเก็บติดกับข่าวในแคช: แปลสำเร็จครั้งเดียว ไม่แปลซ้ำอีก
+        def tr(it):
+            return (translate_th(it["title"]),
+                    translate_th(it["summary"]) if it["summary"] else "")
 
-    # แปลไทยแบบขนาน (มีแคชคำแปล — ข่าวเดิมไม่แปลซ้ำ)
-    def tr(it):
-        it = dict(it)
-        it["title_th"] = translate_th(it["title"]) or it["title"]
-        it["summary_th"] = translate_th(it["summary"]) if it["summary"] else ""
-        return it
+        todo = [it for it in uniq if not it.get("title_th")]
+        if todo:
+            futs = {ex.submit(tr, it): it for it in todo}
+            done, _ = concurrent.futures.wait(futs, timeout=25)
+            for f in done:
+                it = futs[f]
+                try:
+                    t_th, s_th = f.result()
+                    if t_th:
+                        it["title_th"] = t_th
+                        it["summary_th"] = s_th or it["summary"]
+                except Exception:
+                    pass
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
-        uniq = list(ex.map(tr, uniq))
-    return uniq
+        # ส่งออก: ข่าวที่ยังแปลไม่ได้ให้แสดงต้นฉบับ (ไม่บันทึกลงแคช จะได้ลองแปลใหม่รอบหน้า)
+        result = [{**it,
+                   "title_th": it.get("title_th") or it["title"],
+                   "summary_th": it.get("summary_th") or it["summary"]}
+                  for it in uniq]
+        if result:
+            _last_news["items"] = result
+        return result if result else list(_last_news["items"])
+    finally:
+        ex.shutdown(wait=False)
 
 
 # ----------------------------------------------------------------------

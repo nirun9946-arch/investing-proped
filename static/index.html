@@ -1004,27 +1004,35 @@ async function loadCalendar(force){
   btn.disabled = false; btn.textContent = '🔄 รีเฟรชปฏิทิน';
 }
 
-async function loadNews(force){
+async function loadNews(force, isRetry){
   const btn = document.getElementById('newsBtn');
   btn.disabled = true; btn.textContent = '⏳ กำลังโหลด...';
   if(!newsLoaded) document.getElementById('newsList').innerHTML =
     '<div class="news-loading">⏳ กำลังดึงข่าวและแปลไทย... (ครั้งแรกใช้เวลา ~20 วินาที)</div>';
+  let failed = false;
   try{
     await getWatchlist();
-    const r = await fetchWithTimeout('/api/news?' + tickersQS() + (force ? '&refresh=1' : ''), 90000);
+    const r = await fetchWithTimeout('/api/news?' + tickersQS() + (force ? '&refresh=1' : ''), 75000);
     const j = await r.json();
     if(j.items && j.items.length){
       document.getElementById('newsList').innerHTML = j.items.map(newsItem).join('');
       document.getElementById('newsUpd').textContent =
-        'อัปเดตล่าสุด ' + new Date((j.updated||Date.now()/1000)*1000).toLocaleTimeString('th-TH');
+        'อัปเดตล่าสุด ' + new Date((j.updated||Date.now()/1000)*1000).toLocaleTimeString('th-TH')
+        + (j.stale ? ' (ชุดล่าสุดที่มี — เครือข่ายช้า)' : '');
       newsLoaded = true;
-    } else {
+    } else { failed = true; }
+  }catch(e){ failed = true; }
+
+  if(failed){
+    if(!isRetry){
+      // ลองใหม่อัตโนมัติ 1 ครั้ง ก่อนแจ้งผิดพลาด
       document.getElementById('newsList').innerHTML =
-        '<div class="news-loading">❌ โหลดข่าวไม่สำเร็จ — ลองกดรีเฟรชอีกครั้ง</div>';
+        '<div class="news-loading">⏳ เครือข่ายช้า — กำลังลองใหม่อัตโนมัติ...</div>';
+      setTimeout(()=>loadNews(force, true), 3000);
+      return;
     }
-  }catch(e){
     document.getElementById('newsList').innerHTML =
-      '<div class="news-loading">❌ โหลดข่าวไม่สำเร็จ — ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่</div>';
+      '<div class="news-loading">❌ โหลดข่าวไม่สำเร็จ — เช็คว่าโปรแกรม (หน้าต่างดำ) ยังเปิดอยู่ แล้วกด 🔄 รีเฟรชข่าว</div>';
   }
   btn.disabled = false; btn.textContent = '🔄 รีเฟรชข่าว';
 }

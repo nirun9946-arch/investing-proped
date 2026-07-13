@@ -198,11 +198,15 @@ def validate_ticker(ticker):
 @app.route("/api/news")
 def api_news():
     force = request.args.get("refresh") == "1"
+    import time
     try:
-        import time
         items = news_mod.get_news(_tickers_param(), force=force)
         return jsonify({"updated": time.time(), "items": items})
     except Exception as e:
+        # แผนสำรอง: ส่งข่าวชุดล่าสุดที่เคยสำเร็จ ดีกว่าหน้าว่าง
+        stale = news_mod._last_news.get("items") or []
+        if stale:
+            return jsonify({"updated": time.time(), "items": stale, "stale": True})
         return jsonify({"error": str(e), "items": []}), 500
 
 
