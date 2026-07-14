@@ -211,8 +211,12 @@ def fetch(ticker, period="1y", interval="1d"):
     return tk, df
 
 
+_fund_cache = {}  # ticker -> (ts, out) ค่าล่าสุดที่สำเร็จ — ใช้แทนเมื่อ Yahoo ล่มชั่วคราว
+
+
 def fundamentals(tk, price):
     """ดึงข้อมูลพื้นฐาน: ราคาปิด, P/E, เป้านักวิเคราะห์ + ประเมินความคุ้มค่าของราคา"""
+    sym = getattr(tk, "ticker", "")
     out = {"prev_close": None, "pe": None, "fwd_pe": None, "peg": None,
            "target": None, "upside": None, "w52h": None, "w52l": None,
            "market_state": None, "value_label": "N/A",
@@ -221,7 +225,12 @@ def fundamentals(tk, price):
     try:
         info = tk.info or {}
     except Exception:
-        return out
+        info = {}
+
+    # Yahoo ตอบว่าง/ล้มเหลว (โดน rate-limit เป็นช่วงๆ) → ใช้ค่าล่าสุดที่เคยได้ ไม่ปล่อยให้หาย
+    if not info.get("previousClose") and not info.get("regularMarketPrice"):
+        cached = _fund_cache.get(sym)
+        return dict(cached[1]) if cached else out
 
     out["prev_close"] = info.get("previousClose")
 
@@ -289,6 +298,7 @@ def fundamentals(tk, price):
     if out["upside"] is not None:
         parts.append(f"เป้านักวิเคราะห์เฉลี่ย {out['target']:,.2f} ({out['upside']:+.1f}% จากราคาปัจจุบัน)")
     out["value_desc"] = " | ".join(parts)
+    _fund_cache[sym] = (time.time(), dict(out))
     return out
 
 

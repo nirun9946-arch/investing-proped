@@ -220,10 +220,12 @@ def api_article():
 def api_insider():
     force = request.args.get("refresh") == "1"
     try:
-        items = news_mod.get_insider(_tickers_param(), force=force)
-        return jsonify({"items": items})
+        tickers = _tickers_param()
+        items = news_mod.get_insider(tickers, force=force)
+        summary = news_mod.get_insider_overview(tickers, items)
+        return jsonify({"items": items, "summary": summary})
     except Exception as e:
-        return jsonify({"error": str(e), "items": []}), 500
+        return jsonify({"error": str(e), "items": [], "summary": []}), 500
 
 
 @app.route("/api/calendar")

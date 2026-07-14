@@ -121,6 +121,13 @@ def fetch_yahoo_one(t):
 
 _last_news = {"items": []}  # ข่าวชุดล่าสุดที่สำเร็จ — แผนสำรองเมื่อรอบใหม่ล้มเหลว
 
+# แหล่งที่มี paywall/บล็อกการดึงเนื้อหา — ตัดออก ให้เหลือเฉพาะข่าวที่กดอ่าน/แปลได้จริง
+BLOCKED_SOURCES = {
+    "motley fool", "the motley fool", "the wall street journal", "wsj",
+    "barrons.com", "barron's", "investor's business daily",
+    "bloomberg", "seeking alpha", "morningstar",
+}
+
 
 def get_news(tickers, max_items=30, force=False):
     """รวมข่าว RSS (แคชร่วม) + ข่าวรายหุ้น — ทุกขั้นตอนมีเส้นตาย ไม่มีทางค้างทั้งหน้า"""
@@ -161,9 +168,11 @@ def get_news(tickers, max_items=30, force=False):
             if t in _yahoo_cache:
                 items.extend(_yahoo_cache[t][1])
 
-        # เรียงใหม่สุดก่อน + ตัดข่าวซ้ำ (อ้างอิงตัวจริงในแคช เพื่อให้คำแปลติดถาวร)
+        # เรียงใหม่สุดก่อน + ตัดข่าวซ้ำ + ตัดแหล่งที่อ่านไม่ได้ (paywall)
         seen, uniq = set(), []
         for it in sorted(items, key=lambda x: -x["ts"]):
+            if it["source"].strip().lower() in BLOCKED_SOURCES:
+                continue
             key = it["title"].lower()[:80]
             if key in seen:
                 continue
@@ -365,6 +374,69 @@ def get_insider(tickers, force=False):
             items.extend(_insider_cache[t][1])
     items.sort(key=lambda x: x["date"], reverse=True)
     return items[:60]
+
+
+# ----------------------------------------------------------------------
+# อินไซต์ในองค์กร: สัดส่วนถือหุ้นของผู้บริหาร/สถาบัน + ยอดซื้อขายสุทธิของผู้บริหาร
+# ----------------------------------------------------------------------
+_own_cache = {}  # ticker -> (ts, {insiders, institutions})
+
+
+def _ownership(t):
+    import yfinance as yf
+    try:
+        info = yf.Ticker(t).info or {}
+        return {"insiders": info.get("heldPercentInsiders"),
+                "institutions": info.get("heldPercentInstitutions")}
+    except Exception:
+        return {"insiders": None, "institutions": None}
+
+
+def get_insider_overview(tickers, items):
+    """สรุปภาพในองค์กรต่อบริษัท: % ถือหุ้นโดยคนใน/สถาบัน + ซื้อ-ขายสุทธิของผู้บริหารช่วงล่าสุด"""
+    now = time.time()
+    tickers = [t.upper() for t in tickers][:15]
+    need = [t for t in tickers if t not in _own_cache or now - _own_cache[t][0] >= 43200]
+    if need:
+        ex = concurrent.futures.ThreadPoolExecutor(max_workers=6)
+        try:
+            futs = {ex.submit(_ownership, t): t for t in need}
+            done, _ = concurrent.futures.wait(futs, timeout=20)
+            for f in done:
+                try:
+                    _own_cache[futs[f]] = (now, f.result())
+                except Exception:
+                    pass
+        finally:
+            ex.shutdown(wait=False)
+
+    out = []
+    for t in tickers:
+        rows = [i for i in items if i["ticker"] == t]
+        own = _own_cache.get(t, (0, {}))[1]
+        if not rows and own.get("insiders") is None:
+            continue
+        buys = sum(i.get("value") or 0 for i in rows if i["action"] == "buy")
+        sells = sum(i.get("value") or 0 for i in rows if i["action"] == "sell")
+        buy_n = sum(1 for i in rows if i["action"] == "buy")
+        sell_n = sum(1 for i in rows if i["action"] == "sell")
+        net = buys - sells
+        if buy_n and not sell_n:
+            note, tone = "ผู้บริหารซื้ออย่างเดียว — สัญญาณเชื่อมั่นแรง", "buy"
+        elif net > 0:
+            note, tone = "ซื้อสุทธิ — เชิงบวก คนในกำลังสะสม", "buy"
+        elif sell_n and not buy_n:
+            note, tone = "ช่วงนี้มีแต่รายการขาย — ควรติดตามใกล้ชิด", "sell"
+        elif net < 0:
+            note, tone = "ขายสุทธิ — ไม่ได้แย่เสมอไป แต่ควรดูประกอบ", "sell"
+        else:
+            note, tone = "ยังไม่มีรายการซื้อขายของผู้บริหารช่วงล่าสุด", "none"
+        out.append({"ticker": t, "buys": buys, "sells": sells,
+                    "buy_n": buy_n, "sell_n": sell_n, "net": net,
+                    "insiders": own.get("insiders"),
+                    "institutions": own.get("institutions"),
+                    "note": note, "tone": tone})
+    return out
 
 
 # ----------------------------------------------------------------------

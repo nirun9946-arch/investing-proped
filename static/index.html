@@ -265,6 +265,17 @@
   .ins-pos{color:var(--muted);font-size:.83rem}
   .ins-num{text-align:right;font-size:.86rem;color:var(--muted)}
   .ins-num b{color:var(--text);font-size:.95rem}
+  .ins-sum{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-bottom:16px}
+  .is-card{background:linear-gradient(135deg,rgba(30,41,59,.62),rgba(15,23,42,.4));
+    backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.08);border-radius:18px;
+    padding:14px 16px;font-size:.84rem;line-height:1.6;box-shadow:0 10px 26px -12px rgba(0,0,0,.5)}
+  .is-card .is-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .is-card .is-note{font-weight:700}
+  .is-card .is-note.buy{color:var(--green)}
+  .is-card .is-note.sell{color:var(--red)}
+  .is-card .is-note.none{color:var(--muted);font-weight:500}
+  .is-card .is-own{color:var(--muted)}
+  .is-card .is-own b{color:var(--text)}
   #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--card2);
     border:1px solid var(--border);padding:12px 22px;border-radius:10px;display:none;z-index:99;font-weight:600}
   @media(max-width:640px){ header{padding:12px} .addbox input{width:120px} #grid{padding:12px;grid-template-columns:1fr} }
@@ -1031,10 +1042,12 @@ async function loadInsider(force){
     '<div class="news-loading">⏳ กำลังดึงข้อมูลการซื้อขายของผู้บริหาร...</div>';
   try{
     await getWatchlist();
-    const r = await fetch('/api/insider?' + tickersQS() + (force ? '&refresh=1' : ''));
+    const r = await fetchWithTimeout('/api/insider?' + tickersQS() + (force ? '&refresh=1' : ''), 60000);
     const j = await r.json();
-    if(j.items && j.items.length){
-      document.getElementById('insList').innerHTML = j.items.map(insiderItem).join('');
+    if((j.items && j.items.length) || (j.summary && j.summary.length)){
+      const sumHtml = (j.summary && j.summary.length)
+        ? '<div class="ins-sum">' + j.summary.map(insSummaryCard).join('') + '</div>' : '';
+      document.getElementById('insList').innerHTML = sumHtml + (j.items || []).map(insiderItem).join('');
       insiderLoaded = true;
     } else {
       document.getElementById('insList').innerHTML =
@@ -1045,6 +1058,21 @@ async function loadInsider(force){
       '<div class="news-loading">❌ โหลดไม่สำเร็จ — ลองกดรีเฟรชอีกครั้ง</div>';
   }
   btn.disabled = false; btn.textContent = '🔄 รีเฟรชข้อมูลวงใน';
+}
+
+function insSummaryCard(s){
+  const money = v => v ? '$' + Number(v).toLocaleString(undefined,{maximumFractionDigits:0}) : '-';
+  const flow = [];
+  if(s.buy_n) flow.push(`🟢 ซื้อ ${s.buy_n} รายการ ${money(s.buys)}`);
+  if(s.sell_n) flow.push(`🔴 ขาย ${s.sell_n} รายการ ${money(s.sells)}`);
+  const ins = s.insiders != null ? (s.insiders*100).toFixed(2) + '%' : '-';
+  const inst = s.institutions != null ? (s.institutions*100).toFixed(1) + '%' : '-';
+  return `<div class="is-card">
+    <div class="is-head"><span class="ntick">${s.ticker}</span>
+      <span class="is-note ${s.tone}">${s.note}</span></div>
+    ${flow.length ? `<div>${flow.join(' · ')}</div>` : ''}
+    <div class="is-own">คนในองค์กรถือหุ้น <b>${ins}</b> · สถาบันถือ <b>${inst}</b></div>
+  </div>`;
 }
 
 // ================= หน้าปฏิทินตลาด =================
