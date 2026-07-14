@@ -485,6 +485,8 @@
 const grid = document.getElementById('grid');
 const summary = document.getElementById('summary');
 let results = {};
+let liveQuotes = {};   // ticker -> {price, chg, ts}  ราคาสดจาก /api/quotes ใช้เป็นแหล่งเดียวทั้งตอนเรนเดอร์และตอน poll (กันเลขกระโดด)
+let lastQuoteTs = null; // เวลาไทยของราคาสดล่าสุด (Date)
 
 // ===== หลายพอร์ต: แต่ละพอร์ตมี watchlist + มูลค่าพอร์ต + สัดส่วนของตัวเอง =====
 let ports = null, activePort = 0, portsInited = false;
@@ -799,7 +801,13 @@ function card(r){
     <p style="color:var(--red);margin-top:10px;font-size:.9rem">❌ ${r.error}</p>
     <button class="del" onclick="removeTicker('${r.ticker}')">✕</button></div>`;
 
-  const up = r.change_pct >= 0;
+  // ราคาหลักบนการ์ด = ราคาสดจาก /api/quotes (ถ้ามี) — ใช้แหล่งเดียวกับ poll เพื่อไม่ให้เลขกระโดด
+  // ถ้าราคาสดยังไม่มา (ยิงไม่ทัน/ล่ม) ค่อย fallback เป็นราคาปิดรายวันจาก analyze
+  const lq = liveQuotes[r.ticker];
+  const mainPrice = lq ? lq.price : r.price;
+  const mainChg   = (lq && lq.chg != null) ? lq.chg : r.change_pct;
+  const isDelayed = /\.BK$/i.test(r.ticker);   // หุ้นไทยราคาดีเลย์ ~15 นาที
+  const up = mainChg >= 0;
   const score = r.score, maxBar = 10;
   const pct = Math.min(Math.abs(score)/maxBar*50, 50);
   const barColor = score > 0 ? 'var(--green)' : score < 0 ? 'var(--red)' : 'var(--muted)';
@@ -827,14 +835,18 @@ function card(r){
       <div class="vdesc">${r.value_desc||''}</div>
     </div>`;
 
+  // แถวราคานอกเวลา (pre/post): แสดงเฉพาะตอนที่ยังไม่มีราคาสด — ถ้ามีราคาสดแล้ว
+  // ราคาหลักบนการ์ดคือราคา pre/post อยู่แล้ว (มี mktTag กำกับ) จึงไม่โชว์ซ้ำให้ % ขัดกัน
   let extLines = '';
-  if(r.pre_price != null){
-    const pu = r.pre_chg >= 0;
-    extLines += `<div class="ext">🌅 ก่อนเปิดตลาด: <b>${fmt(r.pre_price)}</b> <span class="${pu?'up':'down'}">${pu?'+':''}${fmt(r.pre_chg)}%</span></div>`;
-  }
-  if(r.post_price != null){
-    const pu = r.post_chg >= 0;
-    extLines += `<div class="ext">🌙 หลังปิด/ข้ามคืน: <b>${fmt(r.post_price)}</b> <span class="${pu?'up':'down'}">${pu?'+':''}${fmt(r.post_chg)}%</span></div>`;
+  if(!lq){
+    if(r.pre_price != null){
+      const pu = r.pre_chg >= 0;
+      extLines += `<div class="ext">🌅 ก่อนเปิดตลาด: <b>${fmt(r.pre_price)}</b> <span class="${pu?'up':'down'}">${pu?'+':''}${fmt(r.pre_chg)}%</span></div>`;
+    }
+    if(r.post_price != null){
+      const pu = r.post_chg >= 0;
+      extLines += `<div class="ext">🌙 หลังปิด/ข้ามคืน: <b>${fmt(r.post_price)}</b> <span class="${pu?'up':'down'}">${pu?'+':''}${fmt(r.post_chg)}%</span></div>`;
+    }
   }
 
   const adviceBlock = r.advice_label ? `<div class="advice ad-${r.advice_tone}">
@@ -891,7 +903,8 @@ function card(r){
   return `<div class="card">
     <button class="del" title="ลบออกจาก watchlist" onclick="removeTicker('${r.ticker}')">✕</button>
     <div class="tk">${r.ticker}${mktTag}</div>
-    <div class="price" id="live-${r.ticker}">${fmt(r.price)}<span class="chg ${up?'up':'down'}">${up?'+':''}${fmt(r.change_pct)}%</span></div>
+    <div class="price" id="live-${r.ticker}">${fmt(mainPrice)}<span class="chg ${up?'up':'down'}">${up?'+':''}${fmt(mainChg)}%</span></div>
+    ${isDelayed?'<div class="ext" style="color:var(--muted)">⏱ หุ้นไทย: ราคาดีเลย์ ~15 นาที (ตามตลาด SET)</div>':''}
     ${extLines}
     <div><span class="verdict ${verdictClass(r.verdict)}">${verdictThai(r.verdict)}</span>
       <span class="conf">score ${score>0?'+':''}${score} · มั่นใจ ${Math.round(r.confidence)}%</span></div>
@@ -921,11 +934,17 @@ function renderSummary(){
   const buy = rs.filter(r=>r.verdict.includes('BUY')).length;
   const sell = rs.filter(r=>r.verdict.includes('SELL')).length;
   const hold = rs.length - buy - sell;
+  const mkLabelMap = {REGULAR:'🟢 ตลาดสหรัฐเปิด', PRE:'🌅 ก่อนเปิดตลาด (pre-market)',
+    POST:'🌆 หลังปิดตลาด (after-hours)', CLOSED:'🌙 ตลาดสหรัฐปิด'};
+  const ms = usMarketState();
+  const mkLabel = mkLabelMap[ms] || '';
+  const secs = Math.round(quotePollMs()/1000);
+  const tStr = (lastQuoteTs || new Date()).toLocaleTimeString('th-TH', {timeZone:'Asia/Bangkok'});
   summary.innerHTML = `
     <span class="pill buy">🟢 ซื้อ ${buy}</span>
     <span class="pill hold">⚪ ถือ/รอ ${hold}</span>
     <span class="pill sell">🔴 ขาย ${sell}</span>
-    <span class="pill live"><span class="ldot"></span>LIVE ราคาสดทุก 30 วิ · <span id="liveTime">${new Date().toLocaleTimeString('th-TH')}</span></span>
+    <span class="pill live"><span class="ldot"></span>LIVE${mkLabel?' · '+mkLabel:''} · ราคา ณ <span id="liveTime">${tStr}</span> น. (เวลาไทย) · อัปเดตทุก ${secs} วิ</span>
     <span class="pill time">💾 วอทช์ลิสต์ส่วนตัวของคุณ — บันทึกในเบราว์เซอร์นี้</span>`;
 }
 
@@ -949,6 +968,8 @@ async function scanAll(){
   }
   grid.innerHTML = list.map(t=>`<div class="skeleton" id="sk-${t}">${t} …</div>`).join('');
   summary.innerHTML = '';
+  liveQuotes = {};                 // ล้างราคาสดเก่าของพอร์ตก่อนหน้า
+  const quotesP = fetchQuotes();   // ยิงราคาสดขนานไปกับการวิเคราะห์ ให้มาทันตอนเรนเดอร์ครั้งสุดท้าย
   await Promise.all(list.map(async t=>{
     try{
       const r = await (await fetch('/api/analyze/'+encodeURIComponent(t))).json();
@@ -957,9 +978,10 @@ async function scanAll(){
     const sk = document.getElementById('sk-'+CSS.escape(t).replace(/\\/g,''));
     render();
   }));
+  await quotesP;                   // รอราคาสดให้ครบก่อนเรนเดอร์รอบสุดท้าย → การ์ดขึ้นราคาสดตั้งแต่แรก ไม่กระโดด
   render();
   btn.disabled = false; btn.textContent = '🔄 สแกนทั้งหมด';
-  pollQuotes();  // อัปเดตราคาสดทันทีหลังสแกนเสร็จ
+  scheduleQuotePoll(true);         // เริ่มรอบ poll ราคาสดแบบปรับความถี่ตามสถานะตลาด
 }
 
 async function addTicker(){
@@ -976,7 +998,9 @@ async function addTicker(){
   toast('✅ เพิ่ม ' + tk + ' ในวอทช์ลิสต์ของคุณแล้ว');
   try{
     const r = await (await fetch('/api/analyze/'+encodeURIComponent(tk))).json();
-    results[tk] = r; render();
+    results[tk] = r;
+    await fetchQuotes();   // ดึงราคาสดของตัวใหม่ก่อนเรนเดอร์ ไม่ให้ขึ้นราคาปิดเก่าค้าง
+    render();
   }catch(e){}
 }
 
@@ -1219,17 +1243,24 @@ setInterval(()=>{
 }, 300000);
 
 // ================= ราคาสดเรียลไทม์ (ทุก 30 วินาที) =================
-async function pollQuotes(){
-  if(document.hidden) return;                                        // แท็บถูกพับ ไม่ยิง
-  if(document.getElementById('grid').style.display === 'none') return;  // ไม่ได้อยู่หน้าหุ้น
-  if(!watchlist || !watchlist.length || !Object.keys(results).length) return;
+// ดึงราคาสดจาก /api/quotes → เก็บลง liveQuotes (แหล่งเดียวกับตอนเรนเดอร์การ์ด) + อัปเดต DOM
+async function fetchQuotes(){
+  if(!watchlist || !watchlist.length) return;
   try{
     const r = await fetchWithTimeout('/api/quotes?' + tickersQS(), 25000);
     const j = await r.json();
+    let latestTs = null;
     (j.quotes || []).forEach(q => {
+      const prev = liveQuotes[q.ticker];
+      const oldPrice = prev ? prev.price : (results[q.ticker] ? results[q.ticker].price : null);
+      liveQuotes[q.ticker] = {price:q.price, chg:q.chg, ts:q.ts};   // แหล่งความจริงเดียว
+      // เวลาไทยของแท่งราคาสดล่าสุด (ts มากับ offset -04:00 นิวยอร์ก → แปลงเป็นเวลาไทย)
+      if(q.ts){
+        const d = new Date(String(q.ts).replace(' ', 'T'));
+        if(!isNaN(d) && (!latestTs || d > latestTs)) latestTs = d;
+      }
       const el = document.getElementById('live-' + q.ticker);
       if(!el) return;
-      const oldPrice = results[q.ticker] ? (results[q.ticker].live_price ?? results[q.ticker].price) : null;
       const up = (q.chg ?? 0) >= 0;
       el.innerHTML = fmt(q.price) +
         `<span class="chg ${up?'up':'down'}">${up?'+':''}${q.chg!=null?fmt(q.chg):'-'}%</span>`;
@@ -1238,13 +1269,42 @@ async function pollQuotes(){
         void el.offsetWidth;  // รีสตาร์ทแอนิเมชัน
         el.classList.add(q.price > oldPrice ? 'flash-up' : 'flash-down');
       }
-      if(results[q.ticker]) results[q.ticker].live_price = q.price;
     });
+    if(latestTs) lastQuoteTs = latestTs;
     const lt = document.getElementById('liveTime');
-    if(lt) lt.textContent = new Date().toLocaleTimeString('th-TH');
+    if(lt) lt.textContent = (lastQuoteTs || new Date()).toLocaleTimeString('th-TH', {timeZone:'Asia/Bangkok'});
   }catch(e){}
 }
-setInterval(pollQuotes, 30000);
+
+async function pollQuotes(){
+  if(document.hidden) return;                                        // แท็บถูกพับ ไม่ยิง
+  if(document.getElementById('grid').style.display === 'none') return;  // ไม่ได้อยู่หน้าหุ้น
+  if(!watchlist || !watchlist.length || !Object.keys(results).length) return;
+  await fetchQuotes();
+}
+
+// สถานะตลาดรวมของ US ในพอร์ต (ใช้ตั้งความถี่ poll + ป้ายบอกสถานะ)
+function usMarketState(){
+  const st = Object.values(results).map(r=>r && r.market_state).filter(Boolean);
+  if(st.includes('REGULAR')) return 'REGULAR';
+  if(st.includes('PRE')) return 'PRE';
+  if(st.some(s=>s.startsWith('POST'))) return 'POST';
+  if(st.length) return 'CLOSED';
+  return null;
+}
+// ตลาดคึก (เปิด/pre/post) → poll ถี่ 15 วิ ; ตลาดปิดสนิท → 60 วิ (ประหยัดแรม/กัน rate-limit)
+// หมายเหตุ: server แคชราคา 20 วิ อยู่แล้ว ยิงถี่กว่านั้นจะได้ค่าแคช ไม่ไปกวน Yahoo เพิ่ม
+function quotePollMs(){
+  const ms = usMarketState();
+  return (ms==='REGULAR'||ms==='PRE'||ms==='POST') ? 15000 : 60000;
+}
+let _quoteTimer = null;
+async function scheduleQuotePoll(immediate){
+  if(_quoteTimer){ clearTimeout(_quoteTimer); _quoteTimer = null; }
+  if(immediate) await pollQuotes();
+  const tick = async ()=>{ await pollQuotes(); renderSummary(); _quoteTimer = setTimeout(tick, quotePollMs()); };
+  _quoteTimer = setTimeout(tick, quotePollMs());
+}
 
 (async ()=>{
   await initPorts();
