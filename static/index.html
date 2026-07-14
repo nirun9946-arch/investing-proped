@@ -56,6 +56,14 @@
   .pill.sell{color:var(--red);background:var(--red-bg)}
   .pill.hold{color:var(--yellow);background:var(--yellow-bg)}
   .pill.time{color:var(--muted)}
+  .pill.live{color:var(--green);background:var(--green-bg);display:inline-flex;align-items:center;gap:7px}
+  .ldot{width:9px;height:9px;border-radius:50%;background:var(--green);display:inline-block;
+    animation:pulse 1.6s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,.6)}70%{box-shadow:0 0 0 7px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
+  .price.flash-up{animation:flashUp .8s ease}
+  .price.flash-down{animation:flashDown .8s ease}
+  @keyframes flashUp{0%{color:var(--green)}100%{color:inherit}}
+  @keyframes flashDown{0%{color:var(--red)}100%{color:inherit}}
   #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:16px;padding:16px 22px 40px}
   .card{background:linear-gradient(135deg,rgba(30,41,59,.62) 0%,rgba(15,23,42,.4) 100%);
     backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
@@ -839,7 +847,7 @@ function card(r){
   return `<div class="card">
     <button class="del" title="ลบออกจาก watchlist" onclick="removeTicker('${r.ticker}')">✕</button>
     <div class="tk">${r.ticker}${mktTag}</div>
-    <div class="price">${fmt(r.price)}<span class="chg ${up?'up':'down'}">${up?'+':''}${fmt(r.change_pct)}%</span></div>
+    <div class="price" id="live-${r.ticker}">${fmt(r.price)}<span class="chg ${up?'up':'down'}">${up?'+':''}${fmt(r.change_pct)}%</span></div>
     ${extLines}
     <div><span class="verdict ${verdictClass(r.verdict)}">${verdictThai(r.verdict)}</span>
       <span class="conf">score ${score>0?'+':''}${score} · มั่นใจ ${Math.round(r.confidence)}%</span></div>
@@ -873,7 +881,7 @@ function renderSummary(){
     <span class="pill buy">🟢 ซื้อ ${buy}</span>
     <span class="pill hold">⚪ ถือ/รอ ${hold}</span>
     <span class="pill sell">🔴 ขาย ${sell}</span>
-    <span class="pill time">อัปเดตล่าสุด ${new Date().toLocaleTimeString('th-TH')}</span>
+    <span class="pill live"><span class="ldot"></span>LIVE ราคาสดทุก 30 วิ · <span id="liveTime">${new Date().toLocaleTimeString('th-TH')}</span></span>
     <span class="pill time">💾 วอทช์ลิสต์ส่วนตัวของคุณ — บันทึกในเบราว์เซอร์นี้</span>`;
 }
 
@@ -907,6 +915,7 @@ async function scanAll(){
   }));
   render();
   btn.disabled = false; btn.textContent = '🔄 สแกนทั้งหมด';
+  pollQuotes();  // อัปเดตราคาสดทันทีหลังสแกนเสร็จ
 }
 
 async function addTicker(){
@@ -1164,6 +1173,34 @@ async function loadNews(force, isRetry){
 setInterval(()=>{
   if(document.getElementById('page-news').style.display !== 'none') loadNews(false);
 }, 300000);
+
+// ================= ราคาสดเรียลไทม์ (ทุก 30 วินาที) =================
+async function pollQuotes(){
+  if(document.hidden) return;                                        // แท็บถูกพับ ไม่ยิง
+  if(document.getElementById('grid').style.display === 'none') return;  // ไม่ได้อยู่หน้าหุ้น
+  if(!watchlist || !watchlist.length || !Object.keys(results).length) return;
+  try{
+    const r = await fetchWithTimeout('/api/quotes?' + tickersQS(), 25000);
+    const j = await r.json();
+    (j.quotes || []).forEach(q => {
+      const el = document.getElementById('live-' + q.ticker);
+      if(!el) return;
+      const oldPrice = results[q.ticker] ? (results[q.ticker].live_price ?? results[q.ticker].price) : null;
+      const up = (q.chg ?? 0) >= 0;
+      el.innerHTML = fmt(q.price) +
+        `<span class="chg ${up?'up':'down'}">${up?'+':''}${q.chg!=null?fmt(q.chg):'-'}%</span>`;
+      if(oldPrice != null && Math.abs(q.price - oldPrice) > 1e-9){
+        el.classList.remove('flash-up','flash-down');
+        void el.offsetWidth;  // รีสตาร์ทแอนิเมชัน
+        el.classList.add(q.price > oldPrice ? 'flash-up' : 'flash-down');
+      }
+      if(results[q.ticker]) results[q.ticker].live_price = q.price;
+    });
+    const lt = document.getElementById('liveTime');
+    if(lt) lt.textContent = new Date().toLocaleTimeString('th-TH');
+  }catch(e){}
+}
+setInterval(pollQuotes, 30000);
 
 (async ()=>{
   await initPorts();

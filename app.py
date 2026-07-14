@@ -228,6 +228,14 @@ def api_insider():
         return jsonify({"error": str(e), "items": [], "summary": []}), 500
 
 
+@app.route("/api/quotes")
+def api_quotes():
+    try:
+        return jsonify({"quotes": core.live_quotes(_tickers_param())})
+    except Exception as e:
+        return jsonify({"error": str(e), "quotes": []}), 500
+
+
 @app.route("/api/calendar")
 def api_calendar():
     force = request.args.get("refresh") == "1"

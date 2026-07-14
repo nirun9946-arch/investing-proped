@@ -305,6 +305,51 @@ def fundamentals(tk, price):
 # ----------------------------------------------------------------------
 # Analysis engine
 # ----------------------------------------------------------------------
+_quote_cache = {}  # ticker -> (ts, quote) — แคช 20 วิ กันยิงถี่เกินเมื่อมีผู้ใช้หลายคน
+
+
+def live_quotes(tickers):
+    """ราคาสดแบบเบา: แท่งนาทีล่าสุด (รวม pre/post) — เร็วพอสำหรับ polling ทุก 30 วิ"""
+    import concurrent.futures
+    now = time.time()
+    tickers = [t.upper() for t in tickers][:20]
+
+    def one(t):
+        try:
+            tk = yf.Ticker(t)
+            h = tk.history(period="1d", interval="1m", prepost=True)
+            if h is None or h.empty:
+                return None
+            last = float(h["Close"].iloc[-1])
+            prev = None
+            try:
+                prev = float(tk.fast_info.previous_close)
+            except Exception:
+                pass
+            return {"ticker": t, "price": last,
+                    "chg": (last / prev - 1) * 100 if prev else None,
+                    "ts": str(h.index[-1])}
+        except Exception:
+            return None
+
+    need = [t for t in tickers if t not in _quote_cache or now - _quote_cache[t][0] > 20]
+    if need:
+        ex = concurrent.futures.ThreadPoolExecutor(max_workers=8)
+        try:
+            futs = {ex.submit(one, t): t for t in need}
+            done, _ = concurrent.futures.wait(futs, timeout=15)
+            for f in done:
+                try:
+                    q = f.result()
+                    if q:
+                        _quote_cache[futs[f]] = (now, q)
+                except Exception:
+                    pass
+        finally:
+            ex.shutdown(wait=False)
+    return [_quote_cache[t][1] for t in tickers if t in _quote_cache]
+
+
 def analyze(ticker, cfg):
     s = cfg["settings"]
     tk, df = fetch(ticker, s.get("period", "1y"), s.get("interval", "1d"))
