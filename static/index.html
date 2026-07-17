@@ -196,6 +196,18 @@
   .cal-body{flex:1;min-width:200px;line-height:1.5}
   .cal-days{flex:none;font-size:.85rem;font-weight:700;color:var(--muted)}
   .cal-days.soon{color:var(--red)}
+  #mktbar{display:flex;gap:10px;padding:14px 22px 0;flex-wrap:wrap}
+  .mk-item{flex:1;min-width:150px;display:flex;align-items:center;gap:10px;
+    background:linear-gradient(135deg,rgba(30,41,59,.62),rgba(15,23,42,.4));
+    backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    border:1px solid rgba(255,255,255,.08);border-radius:var(--r-item);
+    padding:10px 14px;box-shadow:var(--shadow-item);animation:fadeIn .3s ease}
+  .mk-ic{font-size:1.25rem;flex:none}
+  .mk-body{min-width:0;line-height:1.35}
+  .mk-name{font-size:.74rem;color:var(--muted);font-weight:600;white-space:nowrap}
+  .mk-px{font-size:1rem;font-weight:800;font-variant-numeric:tabular-nums}
+  .mk-chg{font-size:.78rem;font-weight:700;margin-left:6px;font-variant-numeric:tabular-nums}
+  .mk-loading{color:var(--muted);font-size:.85rem;padding:6px 2px}
   #hero{margin:18px 22px 0;border-radius:var(--r-card);position:relative;overflow:hidden;
     background-image:linear-gradient(135deg,rgba(16,185,129,.72),rgba(15,23,42,.78)),
       url('https://images.unsplash.com/photo-1642790106117-e829e14a795f?q=80&w=2000&auto=format&fit=crop');
@@ -344,6 +356,8 @@
     .addbox{flex:1 1 auto}
     .addbox input{width:auto;flex:1;min-width:0}
     #authPanel{position:fixed;left:12px;right:12px;top:auto;width:auto;margin-top:8px}
+    #mktbar{padding:12px 12px 0;gap:8px}
+    .mk-item{min-width:calc(50% - 4px);padding:8px 10px}
     #hero{margin:14px 12px 0;padding:20px 18px;gap:16px}
     #hero h2{font-size:1.2rem}
     #hero h2 span{font-size:.95rem}
@@ -395,6 +409,8 @@
     </div>
   </div>
 </header>
+
+<div id="mktbar"><div class="mk-loading">🌍 กำลังโหลดราคาตลาดโลก...</div></div>
 
 <section id="hero">
   <span class="hx" style="width:150px;height:150px;right:-40px;top:-50px"></span>
@@ -976,6 +992,51 @@ function card(r){
   </div>`;
 }
 
+// ===== แถบตลาดโลก: ทองคำ / น้ำมัน / บิตคอยน์ / ดอลลาร์ (เรียลไทม์) =====
+let mktPrev = {};   // symbol -> ราคาก่อนหน้า ใช้ทำเอฟเฟกต์วาบตอนเปลี่ยน
+
+async function loadMarket(poll){
+  // เช็ค document.hidden เฉพาะรอบ poll เท่านั้น — ถ้าเช็คตอนโหลดครั้งแรกด้วย
+  // เปิดหน้าไว้ในแท็บหลังแล้วแถบจะค้าง "กำลังโหลด..." ตลอดกาล
+  if(poll && document.hidden) return;
+  try{
+    const r = await fetchWithTimeout('/api/market', 40000);
+    const j = await r.json();
+    const items = j.items || [];
+    if(!items.length) return;
+    const el = document.getElementById('mktbar');
+    // มีอยู่แล้ว → อัปเดตเฉพาะตัวเลข (ไม่วาดใหม่ จะได้ไม่กระพริบ)
+    if(el.querySelector('.mk-item')){
+      items.forEach(m=>{
+        const box = document.getElementById('mk-' + CSS.escape(m.symbol));
+        if(!box) return;
+        const up = (m.chg ?? 0) >= 0;
+        box.innerHTML = `${fmt(m.price, m.price >= 1000 ? 0 : 2)}` +
+          `<span class="mk-chg ${up?'up':'down'}">${up?'+':''}${m.chg!=null?fmt(m.chg):'-'}%</span>`;
+        const old = mktPrev[m.symbol];
+        if(old != null && Math.abs(m.price - old) > 1e-9){
+          box.classList.remove('flash-up','flash-down');
+          void box.offsetWidth;
+          box.classList.add(m.price > old ? 'flash-up' : 'flash-down');
+        }
+        mktPrev[m.symbol] = m.price;
+      });
+      return;
+    }
+    el.innerHTML = items.map(m=>{
+      const up = (m.chg ?? 0) >= 0;
+      mktPrev[m.symbol] = m.price;
+      return `<div class="mk-item" title="${m.name} (${m.unit})">
+        <span class="mk-ic">${m.icon}</span>
+        <div class="mk-body">
+          <div class="mk-name">${m.name}</div>
+          <div class="mk-px price" id="mk-${m.symbol}">${fmt(m.price, m.price >= 1000 ? 0 : 2)}<span class="mk-chg ${up?'up':'down'}">${up?'+':''}${m.chg!=null?fmt(m.chg):'-'}%</span></div>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){}
+}
+
 // ===== สัญญาณเงินใหญ่: สถาบัน / กองทุน / ผู้บริหาร =====
 let smartSignals = {};        // ticker -> payload จาก /api/signals
 let signalsLoaded = false;
@@ -1478,11 +1539,22 @@ let _quoteTimer = null;
 async function scheduleQuotePoll(immediate){
   if(_quoteTimer){ clearTimeout(_quoteTimer); _quoteTimer = null; }
   if(immediate) await pollQuotes();
-  const tick = async ()=>{ await pollQuotes(); renderSummary(); _quoteTimer = setTimeout(tick, quotePollMs()); };
+  const tick = async ()=>{
+    await pollQuotes();
+    loadMarket(true);             // แถบตลาดโลกอัปเดตรอบเดียวกับราคาหุ้น
+    renderSummary();
+    _quoteTimer = setTimeout(tick, quotePollMs());
+  };
   _quoteTimer = setTimeout(tick, quotePollMs());
 }
 
+// ตลาดโลกเดินต่อแม้อยู่หน้าอื่น (ข่าว/วงใน/ปฏิทิน) — ทอง/น้ำมัน/คริปโตไม่ได้หยุดตามหน้าจอ
+setInterval(()=>loadMarket(true), 60000);
+// กลับมาที่แท็บ → ดึงใหม่ทันที ไม่ต้องรอรอบถัดไป
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) loadMarket(); });
+
 (async ()=>{
+  loadMarket();                   // โหลดทันที ไม่ต้องรอสแกนหุ้นเสร็จ
   await initPorts();
   updateAuthUI();
   restoreSession();

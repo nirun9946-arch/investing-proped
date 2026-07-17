@@ -246,6 +246,33 @@ def api_quotes():
         return jsonify({"error": str(e), "quotes": []}), 500
 
 
+# แถบตลาดโลก — สัญลักษณ์ที่ตรวจแล้วว่า Yahoo มีข้อมูลจริง
+# (XAUUSD=X และ DX=F ใช้ไม่ได้ ถูกตัดออก)
+MARKET_SYMBOLS = [
+    ("GC=F", "ทองคำ", "🥇", "USD/ounce"),
+    ("CL=F", "น้ำมัน WTI", "🛢", "USD/barrel"),
+    ("BTC-USD", "บิตคอยน์", "₿", "USD"),
+    ("DX-Y.NYB", "ดอลลาร์ (DXY)", "💵", "ดัชนี"),
+]
+
+
+@app.route("/api/market")
+def api_market():
+    """ราคาเรียลไทม์ตลาดโลก: ทองคำ / น้ำมัน / บิตคอยน์ / ดัชนีดอลลาร์"""
+    try:
+        quotes = {q["ticker"]: q for q in core.live_quotes([s[0] for s in MARKET_SYMBOLS])}
+        out = []
+        for sym, name, icon, unit in MARKET_SYMBOLS:
+            q = quotes.get(sym)
+            if not q:
+                continue
+            out.append({"symbol": sym, "name": name, "icon": icon, "unit": unit,
+                        "price": q["price"], "chg": q.get("chg"), "ts": q.get("ts")})
+        return jsonify({"items": out})
+    except Exception as e:
+        return jsonify({"error": str(e), "items": []}), 500
+
+
 @app.route("/api/signals")
 def api_signals():
     """สัญญาณเงินใหญ่: สถาบัน/กองทุน/ผู้บริหาร ซื้อ-ขายอย่างมีนัย"""
