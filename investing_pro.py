@@ -636,11 +636,25 @@ def send_alerts(result, cfg, state):
         to_alert.append("verdict")
         sent["verdict_" + result["verdict"]] = today
 
+    # สัญญาณเงินใหญ่ (สถาบัน/กองทุน/ผู้บริหาร) — เตือนเฉพาะระดับ "แรง" และไม่ซ้ำในวันเดียวกัน
+    smart_lines = []
+    for a in ((result.get("smart") or {}).get("alerts") or []):
+        if a["level"] != "strong":
+            continue
+        key = f"sm_{a['kind']}_{a['dir']}"
+        if sent.get(key) == today:
+            continue
+        sent[key] = today
+        to_alert.append(key)
+        icon = {"inst": "🏛", "fund": "💼", "insider": "👔"}.get(a["kind"], "•")
+        smart_lines.append(f"{icon}{'🟢' if a['dir'] == 'buy' else '🔴'} {a['text']}")
+
     if not to_alert:
         return False
 
     lines = [f"{ticker}  {result['price']:,.2f} ({result['change_pct']:+.2f}%)",
              f"สรุป: {result['verdict']} (score {result['score']:+d}, มั่นใจ {result['confidence']:.0f}%)"]
+    lines.extend(smart_lines)
     for sg in result["signals"]:
         if sg["weight"] >= 2:
             arrow = "▲" if sg["dir"] == "bull" else "▼"
@@ -694,6 +708,12 @@ def print_report(r):
     pred = r.get("prediction")
     if pred:
         print(f"  🔮 โอกาสขึ้นใน 5 วัน: {pred['prob_up']*100:.0f}% (จากเหตุการณ์คล้ายกัน {pred['n']} ครั้ง)")
+    sm = r.get("smart")
+    if sm and sm.get("alerts"):
+        print("  🔔 สัญญาณเงินใหญ่:")
+        for a in sm["alerts"]:
+            icon = {"inst": "🏛", "fund": "💼", "insider": "👔"}.get(a["kind"], "•")
+            print(f"     {icon}{'🟢' if a['dir'] == 'buy' else '🔴'} {a['text']}")
     print("  สัญญาณ:")
     for sg in r["signals"]:
         arrow = "▲" if sg["dir"] == "bull" else "▼"
@@ -736,9 +756,20 @@ def save_markdown(results):
 def scan(cfg, tickers, alert=True):
     state = load_state()
     results, alerted = [], 0
+
+    # สัญญาณเงินใหญ่: ดึงครั้งเดียวสำหรับทั้ง watchlist (แคช 12 ชม. ในโมดูล news)
+    smart = {}
+    if alert:
+        try:
+            import news
+            smart = {s["ticker"]: s for s in news.smart_money_signals(tickers)}
+        except Exception as e:
+            print(f"  [สัญญาณเงินใหญ่ดึงไม่ได้: {e}]")
+
     for t in tickers:
         try:
             r = analyze(t, cfg)
+            r["smart"] = smart.get(t)
             results.append(r)
             print_report(r)
             if alert and send_alerts(r, cfg, state):

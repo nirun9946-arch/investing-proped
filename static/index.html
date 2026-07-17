@@ -289,6 +289,21 @@
   .ins-pos{color:var(--muted);font-size:.83rem}
   .ins-num{text-align:right;font-size:.86rem;color:var(--muted)}
   .ins-num b{color:var(--text);font-size:.95rem}
+  .smart{margin-top:10px;padding:11px 13px;border-radius:var(--r-block);border:1px solid;
+    font-size:.84rem;line-height:1.55;animation:fadeIn .3s ease}
+  .smart.sm-buy{background:var(--green-bg);border-color:var(--green)}
+  .smart.sm-sell{background:var(--red-bg);border-color:var(--red)}
+  .smart.sm-mixed{background:var(--yellow-bg);border-color:var(--yellow)}
+  .smart .sm-h{font-weight:800;display:block;margin-bottom:5px}
+  .smart.sm-buy .sm-h{color:var(--green)}
+  .smart.sm-sell .sm-h{color:var(--red)}
+  .smart.sm-mixed .sm-h{color:var(--yellow)}
+  .smart .sm-row{display:flex;gap:7px;align-items:flex-start;margin-bottom:3px}
+  .smart .sm-ic{flex:none}
+  .smart .sm-strong{font-weight:700}
+  .smart .sm-as{color:var(--muted);font-size:.75rem;margin-top:5px;
+    border-top:1px dashed var(--border);padding-top:5px}
+  .pill.sig{color:var(--yellow);background:var(--yellow-bg)}
   .ins-sum{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-bottom:16px}
   .is-card{background:linear-gradient(135deg,rgba(30,41,59,.62),rgba(15,23,42,.4));
     backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.08);border-radius:var(--r-item);
@@ -569,6 +584,7 @@ function switchPort(i){
   persistPorts();
   results = {};
   newsLoaded = false; insiderLoaded = false; calendarLoaded = false;
+  smartSignals = {}; signalsLoaded = false;   // สัญญาณเป็นของแต่ละพอร์ต ต้องโหลดใหม่
   syncUp();
   scanAll();
 }
@@ -939,8 +955,65 @@ function card(r){
     ${vpBlock}
     ${predBlock}
     ${adviceBlock}
+    <div id="sm-${r.ticker}">${smartBlock(r.ticker)}</div>
     <div class="sigs">${sigs}</div>
   </div>`;
+}
+
+// ===== สัญญาณเงินใหญ่: สถาบัน / กองทุน / ผู้บริหาร =====
+let smartSignals = {};        // ticker -> payload จาก /api/signals
+let signalsLoaded = false;
+
+// คำนวณข้อความป้ายจาก state เสมอ เพื่อให้ re-render แล้วไม่ย้อนกลับเป็น "กำลังตรวจ..."
+function sigPillText(){
+  if(!signalsLoaded) return '🔍 กำลังตรวจสัญญาณเงินใหญ่...';
+  const strong = Object.values(smartSignals).filter(s=>s.strong).length;
+  const any = Object.keys(smartSignals).length;
+  if(strong) return `🔔 สัญญาณเงินใหญ่ระดับแรง ${strong} ตัว`;
+  if(any) return `🔔 มีความเคลื่อนไหวเงินใหญ่ ${any} ตัว`;
+  return '🔕 ไม่มีสัญญาณเงินใหญ่ที่มีนัย';
+}
+
+function smartBlock(t){
+  const s = smartSignals[t];
+  if(!s || !s.alerts || !s.alerts.length) return '';
+  const icon = {inst:'🏛', fund:'💼', insider:'👔'};
+  const rows = s.alerts.map(a=>{
+    const arrow = a.dir==='buy' ? '🟢' : '🔴';
+    const cls = a.level==='strong' ? 'sm-strong' : '';
+    return `<div class="sm-row"><span class="sm-ic">${icon[a.kind]||'•'}${arrow}</span>
+      <span class="${cls}">${a.text}</span></div>`;
+  }).join('');
+  const hasInst = s.alerts.some(a => a.kind !== 'insider');
+  const asOf = (s.alerts.find(a => a.as_of) || {}).as_of;
+  const note = hasInst && asOf
+    ? `ℹ️ ข้อมูลสถาบัน/กองทุนมาจากรายงาน 13F รายไตรมาส (ณ ${asOf}) — ไม่ใช่การซื้อขายวันนี้`
+    : (s.alerts.some(a=>a.kind==='insider') ? 'ℹ️ ข้อมูลผู้บริหารจาก SEC Form 4 (ยื่นภายใน 2 วันทำการ)' : '');
+  const head = s.tone==='buy' ? '🔔 สัญญาณเงินใหญ่: ฝั่งซื้อ'
+             : s.tone==='sell' ? '🔔 สัญญาณเงินใหญ่: ฝั่งขาย'
+             : '🔔 สัญญาณเงินใหญ่: สองทาง';
+  return `<div class="smart sm-${s.tone}">
+    <span class="sm-h">${head}</span>${rows}
+    ${note?`<div class="sm-as">${note}</div>`:''}
+  </div>`;
+}
+
+async function loadSignals(force){
+  if(!watchlist || !watchlist.length) return;
+  try{
+    const r = await fetchWithTimeout('/api/signals?' + tickersQS() + (force?'&refresh=1':''), 70000);
+    const j = await r.json();
+    smartSignals = {};
+    (j.items || []).forEach(s => { smartSignals[s.ticker] = s; });
+    signalsLoaded = true;
+    // แทรกลงการ์ดที่เรนเดอร์อยู่แล้ว โดยไม่ต้องวาดใหม่ทั้งหน้า
+    (watchlist || []).forEach(t=>{
+      const el = document.getElementById('sm-' + t);
+      if(el) el.innerHTML = smartBlock(t);
+    });
+    const pill = document.getElementById('sigPill');
+    if(pill) pill.innerHTML = sigPillText();
+  }catch(e){}
 }
 
 function renderSummary(){
@@ -959,6 +1032,7 @@ function renderSummary(){
     <span class="pill buy">🟢 ซื้อ ${buy}</span>
     <span class="pill hold">⚪ ถือ/รอ ${hold}</span>
     <span class="pill sell">🔴 ขาย ${sell}</span>
+    <span class="pill sig" id="sigPill">${sigPillText()}</span>
     <span class="pill live"><span class="ldot"></span>LIVE${mkLabel?' · '+mkLabel:''} · ราคา ณ <span id="liveTime">${tStr}</span> น. (เวลาไทย) · อัปเดตทุก ${secs} วิ</span>
     <span class="pill time">💾 วอทช์ลิสต์ส่วนตัวของคุณ — บันทึกในเบราว์เซอร์นี้</span>`;
 }
@@ -997,6 +1071,7 @@ async function scanAll(){
   render();
   btn.disabled = false; btn.textContent = '🔄 สแกนทั้งหมด';
   scheduleQuotePoll(true);         // เริ่มรอบ poll ราคาสดแบบปรับความถี่ตามสถานะตลาด
+  loadSignals(false);              // สัญญาณเงินใหญ่โหลดตามหลัง แล้วแทรกเข้าการ์ดเอง (ไม่หน่วงหน้าจอ)
 }
 
 async function addTicker(){

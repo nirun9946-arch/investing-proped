@@ -246,6 +246,16 @@ def api_quotes():
         return jsonify({"error": str(e), "quotes": []}), 500
 
 
+@app.route("/api/signals")
+def api_signals():
+    """สัญญาณเงินใหญ่: สถาบัน/กองทุน/ผู้บริหาร ซื้อ-ขายอย่างมีนัย"""
+    force = request.args.get("refresh") == "1"
+    try:
+        return jsonify({"items": news_mod.smart_money_signals(_tickers_param(), force=force)})
+    except Exception as e:
+        return jsonify({"error": str(e), "items": []}), 500
+
+
 @app.route("/api/calendar")
 def api_calendar():
     force = request.args.get("refresh") == "1"

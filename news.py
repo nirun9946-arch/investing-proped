@@ -564,6 +564,100 @@ def get_flows(tickers, force=False):
 
 
 # ----------------------------------------------------------------------
+# สัญญาณเงินใหญ่ (Smart Money): รวมสัญญาณสถาบัน/กองทุน (13F) + ผู้บริหาร (Form 4)
+# ----------------------------------------------------------------------
+def smart_money_signals(tickers, force=False):
+    """ตรวจจับ 'สัญญาณ' ที่มีนัยจริงเท่านั้น — ไม่ใช่รายงานความเคลื่อนไหวทุกรายการ
+
+    ความสดของข้อมูลต่างกันมาก จึงกำกับไว้ทุกสัญญาณ:
+      - สถาบัน/กองทุน = รายงาน 13F "รายไตรมาส" (ล่าช้าได้ถึง ~45 วัน)
+      - ผู้บริหาร (Form 4) = ยื่นภายใน 2 วันทำการ → สดกว่ามาก
+    """
+    tickers = [t.upper() for t in tickers][:15]
+    flows = {f["ticker"]: f for f in get_flows(tickers, force=force)}
+    items = get_insider(tickers, force=force)
+    ins = {s["ticker"]: s for s in get_insider_overview(tickers, items)}
+
+    BIG_SINGLE = 20_000_000   # ขายก้อนเดียวเกิน $20M = ผิดปกติพอที่จะรู้
+    BIG_TOTAL = 50_000_000    # ขายรวมเกิน $50M ในชุดล่าสุด
+
+    out = []
+    for t in tickers:
+        alerts = []
+
+        # --- สถาบัน/กองทุน (13F รายไตรมาส) ---
+        f = flows.get(t)
+        if f and (f.get("up_n") or f.get("down_n")):
+            up, dn, as_of = f["up_n"], f["down_n"], f.get("as_of")
+            if up >= 6 and up >= dn * 2:
+                alerts.append({"kind": "inst", "dir": "buy", "level": "strong",
+                               "text": f"สถาบันแห่เข้า — เพิ่มพอร์ต {up} ราย เทียบลดแค่ {dn} ราย",
+                               "as_of": as_of})
+            elif dn >= 6 and dn >= up * 2:
+                alerts.append({"kind": "inst", "dir": "sell", "level": "strong",
+                               "text": f"สถาบันแห่ออก — ลดพอร์ต {dn} ราย เทียบเพิ่มแค่ {up} ราย",
+                               "as_of": as_of})
+            # รายใหญ่ 5 อันดับแรกที่ขยับพอร์ตแรง (>=10%) — รายใหญ่ขยับ = มีนัย
+            for m in (f.get("top") or []):
+                pc = m.get("pct_change")
+                if pc is None or abs(pc) < 0.10:
+                    continue
+                # ตัด artifact: ค่า ±1.0 เป๊ะ โผล่ซ้ำทุกหุ้นกับผู้ถือรายเดียวกัน (เช่น Vanguard
+                # แสดง 1.0 ทั้ง NVDA/MU/PLTR/RKLB พร้อมกัน) = การรายงาน/เปิดสถานะใหม่
+                # ไม่ใช่การซื้อเพิ่มเท่าตัวจริง — ถ้าปล่อยไว้จะเตือนหลอกทุกหุ้น
+                if abs(abs(pc) - 1.0) < 1e-9:
+                    continue
+                is_fund = m.get("kind") == "fund"
+                d = "buy" if pc > 0 else "sell"
+                verb = "เพิ่มพอร์ต" if d == "buy" else "ลดพอร์ต"
+                who = "กองทุน" if is_fund else "สถาบัน"
+                name = (m.get("holder") or "")[:32]
+                alerts.append({"kind": "fund" if is_fund else "inst", "dir": d, "level": "normal",
+                               "text": f"{who}รายใหญ่ {name} {verb} {abs(pc)*100:.0f}% (ถือ {(m.get('pct_held') or 0)*100:.1f}%)",
+                               "as_of": m.get("date") or as_of})
+                if len([a for a in alerts if a["level"] == "normal"]) >= 2:
+                    break
+
+        # --- ผู้บริหาร (Form 4 — สดกว่า) ---
+        s = ins.get(t)
+        if s:
+            if s["buy_n"] >= 2:
+                alerts.append({"kind": "insider", "dir": "buy", "level": "strong",
+                               "text": f"ผู้บริหารซื้อพร้อมกัน {s['buy_n']} ราย — สัญญาณเชื่อมั่นที่แรงที่สุดของกลุ่มคนใน",
+                               "as_of": None})
+            elif s["buy_n"] == 1:
+                alerts.append({"kind": "insider", "dir": "buy", "level": "normal",
+                               "text": "ผู้บริหารซื้อหุ้นตัวเอง — คนในไม่ค่อยซื้อถ้าไม่เห็นอะไร",
+                               "as_of": None})
+            # การขายของผู้บริหารส่วนใหญ่เป็นกิจวัตร (ภาษี/กระจายความเสี่ยง/แผน 10b5-1)
+            # นับ "จำนวนรายการ" จึงไม่ใช่สัญญาณ (ดึงมาแค่ 10 แถว หุ้นใหญ่ก็เต็มทุกตัวอยู่แล้ว)
+            # → เตือนเฉพาะเมื่อ "ขนาด" ผิดปกติจริง และไม่นับรายการขายจ่ายภาษีซึ่งเป็นระบบอัตโนมัติ
+            rows = [i for i in items
+                    if i["ticker"] == t and i["action"] == "sell"
+                    and i["action_th"] != "ขายจ่ายภาษี" and (i.get("value") or 0) > 0]
+            if rows:
+                top_sale = max(rows, key=lambda i: i["value"])
+                total = sum(i["value"] for i in rows)
+                if top_sale["value"] >= BIG_SINGLE or total >= BIG_TOTAL:
+                    m = top_sale["value"] / 1e6
+                    alerts.append({
+                        "kind": "insider", "dir": "sell", "level": "normal",
+                        "text": (f"ผู้บริหารขายก้อนใหญ่ {top_sale['insider']} "
+                                 f"({top_sale['position']}) {m:,.0f} ล้านดอลลาร์ "
+                                 f"เมื่อ {top_sale['date']} · รวมชุดล่าสุด {total/1e6:,.0f} ล้าน "
+                                 f"— ดูประกอบ ไม่ใช่สัญญาณขายเสมอไป"),
+                        "as_of": None})
+
+        if alerts:
+            b = sum(1 for a in alerts if a["dir"] == "buy")
+            sl = sum(1 for a in alerts if a["dir"] == "sell")
+            out.append({"ticker": t, "alerts": alerts,
+                        "tone": "buy" if b > sl else "sell" if sl > b else "mixed",
+                        "strong": any(a["level"] == "strong" for a in alerts)})
+    return out
+
+
+# ----------------------------------------------------------------------
 # ปฏิทินตลาด: กำหนดประชุม Fed (FOMC) + วันประกาศงบไตรมาสของหุ้นใน watchlist
 # ----------------------------------------------------------------------
 # กำหนดการทางการจาก federalreserve.gov/monetarypolicy/fomccalendars.htm
