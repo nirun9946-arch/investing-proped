@@ -233,8 +233,11 @@ def support_resistance(df, lookback=60, window=5):
 def fetch(ticker, period="1y", interval="1d"):
     tk = yf.Ticker(ticker)
     df = tk.history(period=period, interval=interval, auto_adjust=True)
-    if df is None or df.empty or len(df) < 60:
-        raise ValueError(f"ข้อมูลไม่พอสำหรับ {ticker} (ได้ {0 if df is None else len(df)} แท่ง)")
+    # เกณฑ์ขั้นต่ำ 15 แท่ง — พอคำนวณ RSI/EMA พื้นฐาน และรองรับหุ้นเพิ่งเข้าตลาดใหม่
+    # (อินดิเคเตอร์ระยะยาว เช่น EMA200, Volume Profile จะข้ามเองถ้าข้อมูลไม่พอ)
+    if df is None or df.empty or len(df) < 15:
+        n = 0 if df is None else len(df)
+        raise ValueError(f"ข้อมูลไม่พอสำหรับ {ticker} (ได้ {n} แท่ง — หุ้นใหม่มากหรือชื่อไม่ถูก)")
     return tk, df
 
 
