@@ -1141,7 +1141,7 @@ function card(r){
     ${predBlock}
     ${adviceBlock}
     <div id="sm-${r.ticker}">${smartBlock(r.ticker)}</div>
-    <button class="ai-btn" id="aib-${r.ticker}" onclick="aiAnalyze('${r.ticker}')">🤖 AI วิเคราะห์เจาะลึก</button>
+    <button class="ai-btn" id="aib-${r.ticker}" onclick="aiAnalyze('${r.ticker}')">🤖 AI วิเคราะห์เจาะลึก (ฟรี)</button>
     <div id="ai-${r.ticker}" style="display:none"></div>
     <div class="sigs">${sigs}</div>
   </div>`;
@@ -1214,7 +1214,7 @@ async function aiAnalyze(t, force){
   // กดซ้ำ = พับเก็บ (ถ้ามีผลอยู่แล้ว)
   if(!force && box.innerHTML && box.style.display !== 'none'){
     box.style.display = 'none';
-    btn.textContent = '🤖 AI วิเคราะห์เจาะลึก';
+    btn.textContent = '🤖 AI วิเคราะห์เจาะลึก (ฟรี)';
     return;
   }
   btn.disabled = true;
@@ -1232,11 +1232,11 @@ async function aiAnalyze(t, force){
       btn.textContent = '🔼 ซ่อนบทวิเคราะห์';
     } else {
       box.innerHTML = '<div class="ai-box"><span class="ai-err">⚠️ '+(j.error||'วิเคราะห์ไม่สำเร็จ')+'</span></div>';
-      btn.textContent = '🤖 AI วิเคราะห์เจาะลึก';
+      btn.textContent = '🤖 AI วิเคราะห์เจาะลึก (ฟรี)';
     }
   }catch(e){
     box.innerHTML = '<div class="ai-box"><span class="ai-err">⚠️ หมดเวลารอหรือเชื่อมต่อไม่ได้ — ลองใหม่อีกครั้ง</span></div>';
-    btn.textContent = '🤖 AI วิเคราะห์เจาะลึก';
+    btn.textContent = '🤖 AI วิเคราะห์เจาะลึก (ฟรี)';
   }
   btn.disabled = false;
 }
