@@ -182,6 +182,33 @@ def predict_5d(df, price):
             "n": int(len(sample))}
 
 
+def _infer_market_state(df):
+    """เดาสถานะตลาดจากเวลาจริงของ timezone ในกราฟ — ใช้เมื่อ Yahoo info โดนบล็อก (เช่นบนคลาวด์)"""
+    try:
+        tz = df.index.tz
+        if tz is None:
+            return None
+        from datetime import datetime
+        now = datetime.now(tz)
+        if now.weekday() >= 5:
+            return "CLOSED"
+        hm = now.hour * 60 + now.minute
+        tzname = str(tz)
+        if "Bangkok" in tzname:  # ตลาดหุ้นไทย ~10:00-16:30
+            return "REGULAR" if 600 <= hm <= 990 else "CLOSED"
+        if "New_York" in tzname:
+            if 240 <= hm < 570:
+                return "PRE"
+            if 570 <= hm < 960:
+                return "REGULAR"
+            if 960 <= hm < 1200:
+                return "POST"
+            return "CLOSED"
+        return None
+    except Exception:
+        return None
+
+
 def support_resistance(df, lookback=60, window=5):
     """หาแนวรับ/แนวต้านจาก swing highs/lows ล่าสุด"""
     recent = df.tail(lookback)
@@ -536,7 +563,28 @@ def analyze(ticker, cfg):
         "asof": str(df.index[-1].date()),
         "vp": vp,
         "prediction": prediction,
+        # กราฟจิ๋ว 30 วันสำหรับ sparkline บนการ์ด
+        "spark": [round(float(x), 4) for x in df["Close"].tail(30)],
     }
+
+    # เติมข้อมูลที่หายเมื่อ Yahoo info โดนบล็อก (เช่นบนเซิร์ฟเวอร์คลาวด์)
+    # — คำนวณจากกราฟราคาที่มีอยู่แล้วแทน เพื่อให้เว็บสาธารณะได้ข้อมูลครบเท่าเครื่อง local
+    if result["prev_close"] is None and len(df) >= 2:
+        result["prev_close"] = float(df["Close"].iloc[-2])
+    if result["w52h"] is None and len(df) >= 30:
+        result["w52h"] = float(df["High"].tail(252).max())
+        result["w52l"] = float(df["Low"].tail(252).min())
+    if result["market_state"] is None:
+        result["market_state"] = _infer_market_state(df)
+
+    # ป้ายความสอดคล้องของสัญญาณ (ภาษาคน แทนตัวเลข % ที่ชวนเข้าใจผิดว่าคือโอกาสถูก)
+    if confidence >= 70:
+        result["confidence_label"] = "สัญญาณส่วนใหญ่ชี้ทางเดียวกัน"
+    elif confidence >= 40:
+        result["confidence_label"] = "สัญญาณค่อนข้างสอดคล้องกัน"
+    else:
+        result["confidence_label"] = "สัญญาณยังขัดแย้งกัน — ไม่ชัดเจน"
+
     result.update(make_advice(result))
     return result
 

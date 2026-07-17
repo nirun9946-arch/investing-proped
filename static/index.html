@@ -90,7 +90,30 @@
   .v-buy{background:var(--green-bg);color:var(--green);border:1px solid var(--green)}
   .v-sell{background:var(--red-bg);color:var(--red);border:1px solid var(--red)}
   .v-hold{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow)}
-  .conf{font-size:.82rem;color:var(--muted);margin-left:8px}
+  .conf{font-size:.78rem;color:var(--muted);margin-left:8px}
+  .conf-lbl{margin-top:7px;font-size:.86rem;line-height:1.5;color:var(--text);opacity:.92;
+    display:flex;gap:6px;align-items:flex-start}
+  .conf-lbl .cl-ic{flex:none}
+  .spark{display:block;width:100%;height:36px;margin-top:10px}
+  .spark-cap{display:flex;justify-content:space-between;align-items:center;
+    font-size:.72rem;color:var(--muted);margin-top:3px}
+  .spark-cap b{font-weight:700}
+  .term{border-bottom:1px dashed rgba(148,163,184,.55);cursor:help}
+  .term:hover{border-bottom-color:var(--blue);color:var(--blue)}
+  #introCard{margin:16px 22px 0;border-radius:var(--r-card);padding:20px 24px;display:none;
+    background:linear-gradient(135deg,rgba(30,41,59,.62),rgba(15,23,42,.4));
+    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    border:1px solid rgba(96,165,250,.35);box-shadow:var(--shadow-card);animation:fadeIn .3s ease}
+  #introCard h3{font-size:1.05rem;font-weight:800;margin-bottom:4px}
+  #introCard .in-sub{color:var(--muted);font-size:.85rem;margin-bottom:12px}
+  #introCard .in-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+    gap:10px;margin-bottom:12px}
+  #introCard .in-item{background:var(--card2);border:1px solid var(--border);
+    border-radius:var(--r-block);padding:10px 12px;font-size:.83rem;line-height:1.55;color:var(--muted)}
+  #introCard .in-item b{display:block;color:var(--text);margin-bottom:2px}
+  #introCard .in-colors{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;font-size:.82rem}
+  #introCard .in-colors span{padding:4px 12px;border-radius:12px;font-weight:700;border:1px solid}
+  #introCard .in-warn{font-size:.8rem;color:var(--yellow);line-height:1.55;margin-bottom:14px}
   .meter{height:8px;background:var(--card2);border-radius:4px;margin:12px 0;position:relative;overflow:hidden}
   .meter i{position:absolute;top:0;bottom:0;border-radius:4px}
   .stats{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin:10px 0;font-size:.88rem}
@@ -362,6 +385,7 @@
     #hero h2{font-size:1.2rem}
     #hero h2 span{font-size:.95rem}
     .hero-art{width:100%;margin:0}
+    #introCard{margin:14px 12px 0;padding:16px 14px}
     #portTabs{padding:12px 12px 0}
     #ovCard{margin:12px 12px 0;padding:18px 16px;gap:18px;justify-content:center}
     #ovCard .ov-total{font-size:1.6rem}
@@ -465,6 +489,25 @@
   </svg>
 </section>
 
+<section id="introCard">
+  <h3>👋 ครั้งแรกที่นี่ใช่ไหม? อ่าน 30 วินาทีนี้ก่อนเริ่ม</h3>
+  <div class="in-sub">Investing Pro ช่วย "อ่านตลาดแทนคุณ" — มี 4 แท็บหลักด้านบน</div>
+  <div class="in-grid">
+    <div class="in-item"><b>📊 หุ้น</b>การ์ดวิเคราะห์หุ้นในวอทช์ลิสต์ของคุณ: ราคาสด แนวโน้ม สัญญาณซื้อ-ขาย และคำแนะนำภาษาคน</div>
+    <div class="in-item"><b>📰 ข่าว</b>ข่าวหุ้นจากสำนักข่าวจริง แปลไทยให้อัตโนมัติ</div>
+    <div class="in-item"><b>🕵️ วงใน</b>ผู้บริหารบริษัทซื้อ-ขายหุ้นตัวเอง และเงินกองทุนใหญ่เข้า-ออก (จากรายงานทางการของ ก.ล.ต. สหรัฐ)</div>
+    <div class="in-item"><b>📅 ปฏิทิน</b>วันประชุม Fed วันประกาศงบ และตัวเลขเศรษฐกิจสำคัญที่ทำให้ตลาดแกว่ง</div>
+  </div>
+  <div class="in-colors">
+    <span style="color:var(--green);background:var(--green-bg);border-color:var(--green)">🟢 เขียว = สัญญาณฝั่งซื้อ/ราคาขึ้น</span>
+    <span style="color:var(--red);background:var(--red-bg);border-color:var(--red)">🔴 แดง = สัญญาณฝั่งขาย/ราคาลง</span>
+    <span style="color:var(--yellow);background:var(--yellow-bg);border-color:var(--yellow)">🟡 เหลือง = ถือ/รอดู/ระวัง</span>
+  </div>
+  <div class="in-warn">⚠️ นี่คือเครื่องมือ "ช่วยตัดสินใจ" ไม่ใช่คำแนะนำการลงทุน — สัญญาณอาจผิดได้เสมอ อย่าลงเงินที่เสียไม่ได้
+    · เจอคำศัพท์ที่มี<span class="term">เส้นประใต้แบบนี้</span> แตะหรือชี้ค้างเพื่อดูคำอธิบายง่ายๆ ได้เลย</div>
+  <button class="btn-green" onclick="dismissIntro()">✅ เข้าใจแล้ว เริ่มเลย</button>
+</section>
+
 <div id="portTabs"></div>
 
 <div id="ovCard">
@@ -500,7 +543,7 @@
 <div id="page-insider" style="display:none">
   <div class="news-head">
     <button class="btn-blue" id="insBtn" onclick="loadInsider(true)">🔄 รีเฟรชข้อมูลวงใน</button>
-    <span class="nupd">ข้อมูลจากรายงาน SEC (Form 4) ผ่าน OpenInsider — เฉพาะหุ้นสหรัฐ</span>
+    <span class="nupd">ข้อมูลจากรายงาน SEC (<span class="term" onclick="glossToast('Form 4')">Form 4</span>) ผ่าน OpenInsider — เฉพาะหุ้นสหรัฐ</span>
   </div>
   <div class="ins-note">
     💡 <b>วิธีอ่าน:</b> ผู้บริหาร<b style="color:var(--green)">ซื้อ</b>หุ้นตัวเองมักเป็นสัญญาณความเชื่อมั่น ·
@@ -825,10 +868,10 @@ function allocBlock(r){
     '<div id="alo-' + t + '">' + allocOut(r) + '</div></div>';
 }
 
-function toast(msg){
+function toast(msg, ms){
   const t = document.getElementById('toast');
   t.textContent = msg; t.style.display = 'block';
-  clearTimeout(t._h); t._h = setTimeout(()=> t.style.display='none', 3200);
+  clearTimeout(t._h); t._h = setTimeout(()=> t.style.display='none', ms || 3200);
 }
 
 function verdictClass(v){
@@ -842,6 +885,86 @@ function verdictThai(v){
   return m[v] || v;
 }
 const fmt = (n, d=2) => n==null ? '-' : Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+
+// ===== พจนานุกรมศัพท์สำหรับมือใหม่: เขียนที่เดียว ใช้ทุกจุดผ่าน gl()/glossify() =====
+const GLOSS = {
+  'RSI': 'มาตรวัดความร้อนแรงของราคา 0-100 — เกิน 70 คือคนแห่ซื้อเยอะเกินไป (แพงชั่วคราว) ต่ำกว่า 30 คือคนแห่ขายเยอะเกินไป (ถูกชั่วคราว)',
+  'P/E': 'ราคาหุ้นหารด้วยกำไรต่อหุ้น — บอกว่าจ่ายกี่เท่าของกำไรเพื่อซื้อหุ้นนี้ ยิ่งต่ำยิ่งถูก (เทียบกับหุ้นกลุ่มเดียวกัน)',
+  'Fwd P/E': 'P/E ที่คิดจากกำไร "ในอนาคต" ที่นักวิเคราะห์คาด — ถ้าต่ำกว่า P/E ปกติ แปลว่าตลาดคาดว่ากำไรจะโตขึ้น',
+  'PEG': 'P/E หารด้วยอัตราการเติบโตของกำไร — ต่ำกว่า 1 มักถือว่าราคายังไม่แพงเมื่อเทียบกับการเติบโต',
+  'EMA': 'เส้นค่าเฉลี่ยราคาแบบให้น้ำหนักวันล่าสุดมากกว่า — ราคายืนเหนือเส้นคือแนวโน้มขาขึ้น หลุดใต้เส้นคือขาลง',
+  'MACD': 'อินดิเคเตอร์วัดแรงส่งของแนวโน้ม — ตัดขึ้นคือแรงซื้อกำลังมา ตัดลงคือแรงขายกำลังมา',
+  'ATR': 'ค่าเฉลี่ยการแกว่งของราคาต่อวัน — ใช้กะระยะวางจุดตัดขาดทุนให้พอดีกับความผันผวนของหุ้นตัวนั้น',
+  'แนวรับ': 'ระดับราคาที่ผ่านมามักมีแรงซื้อเข้ามาพยุง — ราคาลงมาแถวนี้มีโอกาสเด้งกลับ',
+  'แนวต้าน': 'ระดับราคาที่ผ่านมามักมีแรงขายกดไว้ — ราคาขึ้นไปแถวนี้มีโอกาสย่อตัว',
+  'ตัดขาดทุน': 'ราคาที่ควรยอมขายเพื่อจำกัดความเสียหาย ถ้าหุ้นไม่เป็นไปตามคาด — วินัยข้อสำคัญที่สุดของมือใหม่',
+  'เป้าหมาย': 'ระดับราคาที่ระบบประเมินว่ามีโอกาสไปถึงถ้าแนวโน้มเป็นใจ — เป็นการประเมิน ไม่ใช่คำสัญญา',
+  'วอลุ่ม': 'ปริมาณการซื้อขายเทียบค่าเฉลี่ยปกติ — เกิน 1x คือคึกคักกว่าปกติ ยิ่งสูงสัญญาณยิ่งมีน้ำหนัก',
+  'กรอบ 52 สัปดาห์': 'ราคาต่ำสุด-สูงสุดในรอบ 1 ปี — ช่วยดูว่าราคาตอนนี้อยู่โซนถูกหรือแพงเทียบปีที่ผ่านมา',
+  'score': 'คะแนนรวมจากสัญญาณเทคนิคทุกตัว — บวกคือฝั่งซื้อเด่นกว่า ลบคือฝั่งขายเด่นกว่า',
+  'Volume Profile': 'กราฟบอกว่าที่ระดับราคาไหนเคยมีการซื้อขายหนาแน่น — โซนหนาแน่นมักกลายเป็นแนวรับ/แนวต้านสำคัญ',
+  'POC': 'ระดับราคาที่มีการซื้อขายหนาแน่นที่สุด — เหมือนแม่เหล็กที่ราคามักวิ่งกลับมาหา',
+  'VAH': 'ขอบบนของโซนที่ตลาดซื้อขายกันมากที่สุด — ทำหน้าที่คล้ายแนวต้าน',
+  'VAL': 'ขอบล่างของโซนที่ตลาดซื้อขายกันมากที่สุด — ทำหน้าที่คล้ายแนวรับ',
+  'HVN': 'โซนราคาที่วอลุ่มหนา — ราคามักแวะพักหรือเด้งแถวนี้',
+  'LVN': 'โซนราคาที่วอลุ่มบาง — ราคามักวิ่งผ่านเร็วเพราะแทบไม่มีแรงซื้อขายขวาง',
+  'Value Area': 'ช่วงราคาที่มีการซื้อขายรวมกันราว 70% ของทั้งหมด — ถือเป็น "ราคายุติธรรม" ในสายตาตลาดช่วงนั้น',
+  '13F': 'รายงานที่กองทุนใหญ่ต้องยื่นต่อ ก.ล.ต. สหรัฐทุกไตรมาส เปิดเผยว่าถือหุ้นอะไร — ข้อมูลช้ากว่าความจริงหลายสัปดาห์',
+  'Form 4': 'เอกสารที่ผู้บริหารต้องยื่นต่อ ก.ล.ต. สหรัฐภายใน 2 วันทำการ เมื่อซื้อ-ขายหุ้นบริษัทตัวเอง',
+  'pre-market': 'ช่วงซื้อขายก่อนตลาดสหรัฐเปิดจริง — คนซื้อขายน้อย ราคาแกว่งแรง อาจไม่สะท้อนราคาตอนตลาดเปิด',
+  'after-hours': 'ช่วงซื้อขายหลังตลาดสหรัฐปิด — คนซื้อขายน้อย ราคาแกว่งแรงกว่าปกติ',
+};
+function glossToast(key){
+  if(GLOSS[key]) toast('💡 ' + key + ' — ' + GLOSS[key], 7000);
+}
+// ห่อคำศัพท์ (label คงที่): gl('RSI') หรือ gl('Fwd P/E','Fwd')
+function gl(key, label){
+  const d = GLOSS[key];
+  if(!d) return label || key;
+  return `<span class="term" title="${escHtml(d)}" onclick="glossToast('${key}')">${label || key}</span>`;
+}
+// ห่อคำศัพท์ในข้อความจากเซิร์ฟเวอร์ (สัญญาณ/คำแนะนำ) — จับเฉพาะคำที่รู้จัก
+const GLOSS_RE = /(Volume Profile|Value Area|Form 4|pre-market|after-hours|RSI|MACD|EMA|ATR|PEG|POC|VAH|VAL|HVN|LVN|13F|แนวรับ|แนวต้าน|วอลุ่ม)/g;
+function glossify(txt){
+  return String(txt == null ? '' : txt).replace(GLOSS_RE, m => GLOSS[m] ? gl(m) : m);
+}
+
+// ===== Sparkline 30 วัน: SVG ล้วน ไม่ใช้ไลบรารี =====
+function sparkSvg(r){
+  const sp = r.spark;
+  if(!Array.isArray(sp) || sp.length < 2 || sp.some(v => typeof v !== 'number' || !isFinite(v))) return '';
+  const W = 300, H = 36, PAD = 3;
+  const min = Math.min(...sp), max = Math.max(...sp), span = (max - min) || 1;
+  const n = sp.length;
+  const pts = sp.map((v,i)=>[ i/(n-1)*W, H-PAD - (v-min)/span*(H-PAD*2) ]);
+  const line = pts.map((p,i)=>(i?'L':'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('');
+  const chg = (sp[n-1] - sp[0]) / Math.abs(sp[0] || 1) * 100;
+  const up = chg >= 0;
+  const col = up ? 'var(--green)' : 'var(--red)';
+  const gid = 'sg-' + String(r.ticker).replace(/[^A-Za-z0-9]/g,'');
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:${col};stop-opacity:.26"/>
+      <stop offset="1" style="stop-color:${col};stop-opacity:0"/>
+    </linearGradient></defs>
+    <path d="${line} L${W} ${H} L0 ${H} Z" fill="url(#${gid})"/>
+    <path d="${line}" fill="none" style="stroke:${col}" stroke-width="1.8"
+      stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+  </svg>
+  <div class="spark-cap"><span>แนวโน้ม 30 วันล่าสุด</span>
+    <b class="${up?'up':'down'}">${up?'▲ +':'▼ '}${fmt(chg,1)}%</b></div>`;
+}
+
+// ===== การ์ดต้อนรับมือใหม่ (โชว์เฉพาะครั้งแรก) =====
+function syncIntro(page){
+  const ic = document.getElementById('introCard');
+  if(ic) ic.style.display = (page === 'stocks' && !localStorage.getItem('ip_seen_intro')) ? 'block' : 'none';
+}
+function dismissIntro(){
+  localStorage.setItem('ip_seen_intro', '1');
+  document.getElementById('introCard').style.display = 'none';
+  toast('✅ เริ่มกันเลย — แตะคำที่มีเส้นประได้ทุกจุดถ้าสงสัยความหมาย');
+}
 
 function card(r){
   if(r.error) return `<div class="card err"><div class="tk">${r.ticker}</div>
@@ -875,11 +998,11 @@ function card(r){
   const vClass = vClassMap[r.value_label] || 'vl-na';
   const peShow = r.fwd_pe ?? r.pe;
   const peLine = r.pe != null || r.fwd_pe != null
-    ? `P/E <b>${r.pe!=null?fmt(r.pe,1):'-'}</b>${r.fwd_pe!=null?` · Fwd <b>${fmt(r.fwd_pe,1)}</b>`:''}`
-    : `P/E <b>-</b>`;
+    ? `${gl('P/E')} <b>${r.pe!=null?fmt(r.pe,1):'-'}</b>${r.fwd_pe!=null?` · ${gl('Fwd P/E','Fwd')} <b>${fmt(r.fwd_pe,1)}</b>`:''}`
+    : `${gl('P/E')} <b>-</b>`;
   const valBlock = `<div class="val">
       <span class="vlbl ${vClass}">💰 ${r.value_label==='N/A'?'ประเมินไม่ได้':r.value_label}</span>${peLine}
-      <div class="vdesc">${r.value_desc||''}</div>
+      <div class="vdesc">${glossify(r.value_desc||'')}</div>
     </div>`;
 
   // แถวราคานอกเวลา (pre/post) — แสดง "ทุกใบ" ที่อยู่ในช่วงนอกเวลาทำการ
@@ -895,7 +1018,7 @@ function card(r){
     const c = outPrice != null ? outChg : r.pre_chg;
     if(p != null){
       const pu = (c ?? 0) >= 0;
-      extLines += `<div class="ext">🌅 ก่อนเปิดตลาด (pre-market): <b>${fmt(p)}</b> ` +
+      extLines += `<div class="ext">🌅 ก่อนเปิดตลาด (${gl('pre-market')}): <b>${fmt(p)}</b> ` +
         `<span class="${pu?'up':'down'}">${pu?'+':''}${c!=null?fmt(c):'-'}%</span>${ref}</div>`;
     }
   } else if(st === 'POST' || st === 'POSTPOST'){
@@ -903,7 +1026,7 @@ function card(r){
     const c = outPrice != null ? outChg : r.post_chg;
     if(p != null){
       const pu = (c ?? 0) >= 0;
-      extLines += `<div class="ext">🌙 หลังปิด/ข้ามคืน (after-hours): <b>${fmt(p)}</b> ` +
+      extLines += `<div class="ext">🌙 หลังปิด/ข้ามคืน (${gl('after-hours')}): <b>${fmt(p)}</b> ` +
         `<span class="${pu?'up':'down'}">${pu?'+':''}${c!=null?fmt(c):'-'}%</span>${ref}</div>`;
     }
   } else if(st === 'CLOSED' && r.post_price != null){
@@ -914,8 +1037,8 @@ function card(r){
 
   const adviceBlock = r.advice_label ? `<div class="advice ad-${r.advice_tone}">
       <span class="albl">💡 ควรซื้อไหม? → ${r.advice_label}</span>
-      <ul>${(r.advice_reasons||[]).map(x=>`<li>${x}</li>`).join('')}</ul>
-      <div class="plan">📋 ${r.advice_plan||''}</div>
+      <ul>${(r.advice_reasons||[]).map(x=>`<li>${glossify(x)}</li>`).join('')}</ul>
+      <div class="plan">📋 ${glossify(r.advice_plan||'')}</div>
     </div>` : '';
 
   // Volume Profile: กราฟวอลุ่มจิ๋ว (แกนตั้ง=ราคา) + ระดับ POC/VA + สถิติโซน
@@ -932,17 +1055,17 @@ function card(r){
       const bp = Math.round(vp.bounces/vp.touches*100);
       stat = `📊 พฤติกรรมที่โซน POC (120 วัน): ราคาวิ่งเข้าโซน ${vp.touches} ครั้ง → เด้งกลับ ${vp.bounces} ครั้ง (${bp}%) · ทะลุผ่าน ${vp.breaks} ครั้ง`;
     }
-    const pos = r.price > vp.vah ? '🟢 เหนือ Value Area' : r.price < vp.val ? '🔴 ใต้ Value Area' : '⚪ ในค่ากลางตลาด';
+    const pos = r.price > vp.vah ? `🟢 เหนือ ${gl('Value Area')}` : r.price < vp.val ? `🔴 ใต้ ${gl('Value Area')}` : '⚪ ในค่ากลางตลาด';
     vpBlock = `<div class="vpbox">
-      <div class="vph">📐 Volume Profile — โซนสำคัญอัตโนมัติ <span style="color:var(--muted);font-weight:400">(${pos})</span></div>
+      <div class="vph">📐 ${gl('Volume Profile')} — โซนสำคัญอัตโนมัติ <span style="color:var(--muted);font-weight:400">(${pos})</span></div>
       <div class="vpflex">
         <div class="vpchart">${bars}</div>
         <div class="vplv">
-          <div class="lvrow"><span>VAH (ขอบบน Value Area)</span><b class="down">${fmt(vp.vah)}</b></div>
-          <div class="lvrow"><span>POC (วอลุ่มหนาแน่นสุด)</span><b style="color:var(--blue)">${fmt(vp.poc)}</b></div>
-          <div class="lvrow"><span>VAL (ขอบล่าง Value Area)</span><b class="up">${fmt(vp.val)}</b></div>
-          ${vp.hvn.length?`<div class="lvrow"><span>HVN โซนวอลุ่มหนา</span><b>${vp.hvn.slice(-3).map(x=>fmt(x)).join(' · ')}</b></div>`:''}
-          ${vp.lvn.length?`<div class="lvrow"><span>LVN โซนวอลุ่มบาง</span><b>${vp.lvn.slice(-3).map(x=>fmt(x)).join(' · ')}</b></div>`:''}
+          <div class="lvrow"><span>${gl('VAH')} (ขอบบน Value Area)</span><b class="down">${fmt(vp.vah)}</b></div>
+          <div class="lvrow"><span>${gl('POC')} (วอลุ่มหนาแน่นสุด)</span><b style="color:var(--blue)">${fmt(vp.poc)}</b></div>
+          <div class="lvrow"><span>${gl('VAL')} (ขอบล่าง Value Area)</span><b class="up">${fmt(vp.val)}</b></div>
+          ${vp.hvn.length?`<div class="lvrow"><span>${gl('HVN')} โซนวอลุ่มหนา</span><b>${vp.hvn.slice(-3).map(x=>fmt(x)).join(' · ')}</b></div>`:''}
+          ${vp.lvn.length?`<div class="lvrow"><span>${gl('LVN')} โซนวอลุ่มบาง</span><b>${vp.lvn.slice(-3).map(x=>fmt(x)).join(' · ')}</b></div>`:''}
         </div>
       </div>
       ${stat?`<div class="vpstat">${stat}</div>`:''}
@@ -960,8 +1083,17 @@ function card(r){
   }
 
   const sigs = r.signals.filter(s=>s.weight>=1).map(s=>
-    `<div class="sig"><span class="ic ${s.dir==='bull'?'up':'down'}">${s.dir==='bull'?'▲':'▼'}</span><span>${s.desc}</span></div>`
+    `<div class="sig"><span class="ic ${s.dir==='bull'?'up':'down'}">${s.dir==='bull'?'▲':'▼'}</span><span>${glossify(s.desc)}</span></div>`
   ).join('');
+
+  // ป้ายความเชื่อมั่นภาษาคนเป็นหลัก — ตัวเลข % เป็นข้อมูลรอง (กันมือใหม่เข้าใจผิดว่า % = โอกาสถูก)
+  const confLine = r.confidence_label
+    ? `<div class="conf-lbl"><span class="cl-ic">🧭</span><span>${escHtml(r.confidence_label)}
+        <span class="conf">(${gl('score')} ${score>0?'+':''}${score} · น้ำหนักสัญญาณ ${Math.round(r.confidence)}%)</span></span></div>`
+    : '';
+  const confInline = r.confidence_label
+    ? ''
+    : `<span class="conf">${gl('score')} ${score>0?'+':''}${score} · มั่นใจ ${Math.round(r.confidence)}%</span>`;
 
   return `<div class="card">
     <button class="del" title="ลบออกจาก watchlist" onclick="removeTicker('${r.ticker}')">✕</button>
@@ -969,18 +1101,19 @@ function card(r){
     <div class="price" id="live-${r.ticker}">${fmt(mainPrice)}<span class="chg ${up?'up':'down'}">${up?'+':''}${fmt(mainChg)}%</span></div>
     ${isDelayed?'<div class="ext" style="color:var(--muted)">⏱ หุ้นไทย: ราคาดีเลย์ ~15 นาที (ตามตลาด SET)</div>':''}
     ${extLines}
-    <div><span class="verdict ${verdictClass(r.verdict)}">${verdictThai(r.verdict)}</span>
-      <span class="conf">score ${score>0?'+':''}${score} · มั่นใจ ${Math.round(r.confidence)}%</span></div>
+    ${sparkSvg(r)}
+    <div><span class="verdict ${verdictClass(r.verdict)}">${verdictThai(r.verdict)}</span>${confInline}</div>
+    ${confLine}
     <div class="meter"><i style="${barStyle}"></i></div>
     <div class="stats">
       <div><span>ปิดก่อนหน้า:</span> <b>${fmt(r.prev_close)}</b></div>
-      <div><span>กรอบ 52 สัปดาห์:</span> <b>${fmt(r.w52l)} – ${fmt(r.w52h)}</b></div>
-      <div><span>RSI(14):</span> <b>${fmt(r.rsi,1)}</b> ${rsiTag}</div>
-      <div><span>วอลุ่ม:</span> <b>${fmt(r.vol_ratio)}x</b></div>
-      <div><span>แนวรับ:</span> <b class="up">${fmt(r.support)}</b></div>
-      <div><span>แนวต้าน:</span> <b class="down">${fmt(r.resistance)}</b></div>
-      <div><span>ตัดขาดทุน:</span> <b>${fmt(r.stop_suggest)}</b></div>
-      <div><span>เป้าหมาย:</span> <b>${fmt(r.target_suggest)}</b></div>
+      <div><span>${gl('กรอบ 52 สัปดาห์')}:</span> <b>${fmt(r.w52l)} – ${fmt(r.w52h)}</b></div>
+      <div><span>${gl('RSI','RSI(14)')}:</span> <b>${fmt(r.rsi,1)}</b> ${rsiTag}</div>
+      <div><span>${gl('วอลุ่ม')}:</span> <b>${fmt(r.vol_ratio)}x</b></div>
+      <div><span>${gl('แนวรับ')}:</span> <b class="up">${fmt(r.support)}</b></div>
+      <div><span>${gl('แนวต้าน')}:</span> <b class="down">${fmt(r.resistance)}</b></div>
+      <div><span>${gl('ตัดขาดทุน')}:</span> <b>${fmt(r.stop_suggest)}</b></div>
+      <div><span>${gl('เป้าหมาย')}:</span> <b>${fmt(r.target_suggest)}</b></div>
     </div>
     ${valBlock}
     ${allocBlock(r)}
@@ -1071,7 +1204,7 @@ function smartBlock(t){
              : '🔔 สัญญาณเงินใหญ่: สองทาง';
   return `<div class="smart sm-${s.tone}">
     <span class="sm-h">${head}</span>${rows}
-    ${note?`<div class="sm-as">${note}</div>`:''}
+    ${note?`<div class="sm-as">${glossify(note)}</div>`:''}
   </div>`;
 }
 
@@ -1186,6 +1319,7 @@ let insiderLoaded = false;
 let calendarLoaded = false;
 
 function switchPage(page){
+  syncIntro(page);
   document.getElementById('hero').style.display = page==='stocks' ? 'flex' : 'none';
   document.getElementById('portTabs').style.display = page==='stocks' ? 'flex' : 'none';
   document.getElementById('portbar').style.display = page==='stocks' ? 'flex' : 'none';
@@ -1378,7 +1512,7 @@ async function loadFlows(force){
       <h3 class="flow-sec-h">🏦 เงินสถาบัน/กองทุน เข้าหรือออก
         ${asOf ? `<span class="flow-asof">ข้อมูล ณ ${thDate(asOf)}</span>` : ''}</h3>
       <div class="ins-note">
-        💡 <b>อ่านตรงนี้ก่อน:</b> ตัวเลขนี้มาจากรายงาน <b>13F ที่ยื่นเป็นรายไตรมาส</b>
+        💡 <b>อ่านตรงนี้ก่อน:</b> ตัวเลขนี้มาจากรายงาน <b>${gl('13F')} ที่ยื่นเป็นรายไตรมาส</b>
         ${asOf ? `(รอบล่าสุด ${thDate(asOf)})` : ''} —
         <b style="color:var(--yellow)">ไม่ใช่การซื้อขายของวันนี้</b> และมักรายงานช้ากว่าความเป็นจริงหลายสัปดาห์
         ใช้ดูทิศทางการสะสม/ลดพอร์ตระยะยาว ไม่ใช่สัญญาณเข้า-ออกรายวัน
@@ -1554,6 +1688,7 @@ setInterval(()=>loadMarket(true), 60000);
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) loadMarket(); });
 
 (async ()=>{
+  syncIntro('stocks');            // การ์ดต้อนรับมือใหม่ — โชว์เฉพาะเครื่องที่ยังไม่เคยกด "เข้าใจแล้ว"
   loadMarket();                   // โหลดทันที ไม่ต้องรอสแกนหุ้นเสร็จ
   await initPorts();
   updateAuthUI();
