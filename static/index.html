@@ -324,6 +324,26 @@
   .ins-pos{color:var(--muted);font-size:.83rem}
   .ins-num{text-align:right;font-size:.86rem;color:var(--muted)}
   .ins-num b{color:var(--text);font-size:.95rem}
+  .ai-btn{width:100%;margin-top:10px;padding:10px 14px;border-radius:var(--r-block);
+    background:linear-gradient(135deg,rgba(168,85,247,.18),rgba(59,130,246,.15));
+    border:1px solid rgba(168,85,247,.45);color:#d8b4fe;font-weight:700;font-size:.88rem;
+    transition:.2s}
+  .ai-btn:hover{background:linear-gradient(135deg,rgba(168,85,247,.3),rgba(59,130,246,.25))}
+  .ai-btn:disabled{opacity:.55;cursor:wait}
+  .ai-box{margin-top:10px;padding:14px 16px;border-radius:var(--r-block);
+    background:linear-gradient(135deg,rgba(88,28,135,.25),rgba(15,23,42,.5));
+    border:1px solid rgba(168,85,247,.35);font-size:.87rem;line-height:1.7;
+    animation:fadeIn .3s ease}
+  .ai-box .ai-head{display:flex;justify-content:space-between;align-items:center;gap:8px;
+    flex-wrap:wrap;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(168,85,247,.25)}
+  .ai-box .ai-title{font-weight:800;color:#d8b4fe}
+  .ai-box .ai-meta{font-size:.72rem;color:var(--muted)}
+  .ai-box h4,.ai-box strong{color:var(--text)}
+  .ai-box p{margin-bottom:8px}
+  .ai-box ul{margin:0 0 8px 18px}
+  .ai-box li{margin-bottom:3px}
+  .ai-box em{color:var(--muted);font-size:.78rem}
+  .ai-err{color:var(--yellow);line-height:1.6}
   .smart{margin-top:10px;padding:11px 13px;border-radius:var(--r-block);border:1px solid;
     font-size:.84rem;line-height:1.55;animation:fadeIn .3s ease}
   .smart.sm-buy{background:var(--green-bg);border-color:var(--green)}
@@ -1121,6 +1141,8 @@ function card(r){
     ${predBlock}
     ${adviceBlock}
     <div id="sm-${r.ticker}">${smartBlock(r.ticker)}</div>
+    <button class="ai-btn" id="aib-${r.ticker}" onclick="aiAnalyze('${r.ticker}')">🤖 AI วิเคราะห์เจาะลึก</button>
+    <div id="ai-${r.ticker}" style="display:none"></div>
     <div class="sigs">${sigs}</div>
   </div>`;
 }
@@ -1168,6 +1190,55 @@ async function loadMarket(poll){
       </div>`;
     }).join('');
   }catch(e){}
+}
+
+// ===== AI วิเคราะห์รายตัว (Claude) =====
+function mdLite(t){
+  // แปลง markdown อย่างง่าย + escape HTML ก่อนเสมอ (กัน injection จากข้อความ)
+  const esc = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let html = esc
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/(^|[\s>])_([^_\n]+)_/g,'$1<em>$2</em>')
+    .split(/\n/).map(line=>{
+      if(/^\s*[-•*]\s+/.test(line)) return '<li>'+line.replace(/^\s*[-•*]\s+/,'')+'</li>';
+      if(line.trim()==='') return '';
+      return '<p>'+line+'</p>';
+    }).join('');
+  return html.replace(/(?:<li>[\s\S]*?<\/li>)+/g, m=>'<ul>'+m+'</ul>');
+}
+
+async function aiAnalyze(t, force){
+  const btn = document.getElementById('aib-'+t);
+  const box = document.getElementById('ai-'+t);
+  if(!btn || !box) return;
+  // กดซ้ำ = พับเก็บ (ถ้ามีผลอยู่แล้ว)
+  if(!force && box.innerHTML && box.style.display !== 'none'){
+    box.style.display = 'none';
+    btn.textContent = '🤖 AI วิเคราะห์เจาะลึก';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = '🤖 กำลังวิเคราะห์... (~30-60 วิ)';
+  box.style.display = 'block';
+  box.innerHTML = '<div class="ai-box"><span class="ai-err">⏳ AI กำลังอ่านข้อมูลทุกมิติของ '+t+' — เทคนิค, Volume Profile, เงินใหญ่, ข่าว...</span></div>';
+  try{
+    const r = await fetchWithTimeout('/api/ai/'+encodeURIComponent(t)+(force?'?refresh=1':''), 180000);
+    const j = await r.json();
+    if(j.ok){
+      box.innerHTML = '<div class="ai-box">'
+        + '<div class="ai-head"><span class="ai-title">🤖 บทวิเคราะห์ AI — '+t+'</span>'
+        + '<span class="ai-meta">'+(j.model||'')+(j.cached?' · จากแคช (อายุไม่เกิน 1 ชม.)':'')+'</span></div>'
+        + mdLite(j.analysis) + '</div>';
+      btn.textContent = '🔼 ซ่อนบทวิเคราะห์';
+    } else {
+      box.innerHTML = '<div class="ai-box"><span class="ai-err">⚠️ '+(j.error||'วิเคราะห์ไม่สำเร็จ')+'</span></div>';
+      btn.textContent = '🤖 AI วิเคราะห์เจาะลึก';
+    }
+  }catch(e){
+    box.innerHTML = '<div class="ai-box"><span class="ai-err">⚠️ หมดเวลารอหรือเชื่อมต่อไม่ได้ — ลองใหม่อีกครั้ง</span></div>';
+    btn.textContent = '🤖 AI วิเคราะห์เจาะลึก';
+  }
+  btn.disabled = false;
 }
 
 // ===== สัญญาณเงินใหญ่: สถาบัน / กองทุน / ผู้บริหาร =====

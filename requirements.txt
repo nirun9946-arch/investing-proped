@@ -1,5 +1,6 @@
 flask
 yfinance
+anthropic
 pandas
 requests
 feedparser

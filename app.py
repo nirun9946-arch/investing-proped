@@ -19,6 +19,7 @@ import re
 import secrets
 import threading
 
+import ai as ai_mod
 import investing_pro as core
 import news as news_mod
 
@@ -271,6 +272,35 @@ def api_market():
         return jsonify({"items": out})
     except Exception as e:
         return jsonify({"error": str(e), "items": []}), 500
+
+
+@app.route("/api/ai/<ticker>")
+def api_ai(ticker):
+    """AI วิเคราะห์หุ้นรายตัวด้วย Claude — รวมข้อมูลทุกมิติที่ระบบมี"""
+    ticker = ticker.strip().upper()
+    force = request.args.get("refresh") == "1"
+    if not ai_mod.ai_available():
+        return jsonify(ai_mod.analyze_with_ai(ticker, {})), 503
+    try:
+        r = core.analyze(ticker, read_config())
+        smart = insider_sum = None
+        news_titles = []
+        try:
+            sigs = news_mod.smart_money_signals([ticker])
+            smart = sigs[0] if sigs else None
+            items = news_mod.get_insider([ticker])
+            overview = news_mod.get_insider_overview([ticker], items)
+            insider_sum = overview[0] if overview else None
+            news_titles = [n.get("title_th") or n.get("title")
+                           for n in news_mod.get_news([ticker], max_items=10)
+                           if n.get("ticker") == ticker or True][:6]
+        except Exception:
+            pass  # ข้อมูลเสริมล่มไม่ควรทำให้ AI วิเคราะห์ไม่ได้ — ใช้เท่าที่มี
+        result = ai_mod.analyze_with_ai(ticker, r, smart=smart, insider=insider_sum,
+                                        news_titles=news_titles, force=force)
+        return jsonify(result), (200 if result.get("ok") else 502)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"เตรียมข้อมูลไม่สำเร็จ: {str(e)[:120]}"}), 500
 
 
 @app.route("/api/signals")
