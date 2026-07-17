@@ -19,7 +19,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 
 CLAUDE_MODEL = "claude-opus-4-8"
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+# ลองรุ่นตามลำดับ — 2.5-flash มีโควตาฟรีสำหรับคีย์ใหม่ (2.0-flash โควตาเป็น 0)
+# ถ้ารุ่นแรกติด 429/404/503 จะสลับไปตัวถัดไปอัตโนมัติ
+GEMINI_MODELS = [os.environ.get("GEMINI_MODEL")] if os.environ.get("GEMINI_MODEL") else []
+GEMINI_MODELS += ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"]
+GEMINI_MODELS = [m for i, m in enumerate(GEMINI_MODELS) if m and m not in GEMINI_MODELS[:i]]
 _cache = {}   # ticker -> (ts, analysis_text)
 AI_TTL = 3600  # วิเคราะห์ซ้ำตัวเดิมไม่เกินชั่วโมงละครั้ง — คุมค่าใช้จ่าย
 
@@ -155,22 +159,37 @@ def _call_claude(key, system, user_msg):
 
 
 def _call_gemini(key, system, user_msg):
-    """เรียก Gemini ผ่าน REST (ไม่ต้องลง SDK เพิ่ม) — ใช้ระบบใช้ฟรีของ Google"""
+    """เรียก Gemini ผ่าน REST — วนลองหลายรุ่น ถ้ารุ่นแรกโควตาหมด/ไม่มี ก็สลับรุ่นเอง"""
     import requests
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-           f"{GEMINI_MODEL}:generateContent")
     body = {
         "systemInstruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": user_msg}]}],
         "generationConfig": {"maxOutputTokens": 2500, "temperature": 0.6},
     }
-    try:
-        resp = requests.post(url, params={"key": key}, json=body, timeout=120)
+    last_err = "ไม่มีรุ่น Gemini ที่ใช้ได้"
+    for model in GEMINI_MODELS:
+        url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
+               f"{model}:generateContent")
+        try:
+            resp = requests.post(url, params={"key": key}, json=body, timeout=120)
+        except requests.Timeout:
+            last_err = "Gemini ตอบช้าเกินไป — ลองใหม่อีกครั้ง"
+            continue
+        except requests.ConnectionError:
+            return {"ok": False, "error": "เชื่อมต่อ Gemini ไม่ได้ — ตรวจสอบอินเทอร์เน็ต"}
+        except Exception as e:
+            last_err = f"วิเคราะห์ไม่สำเร็จ: {str(e)[:100]}"
+            continue
+
         if resp.status_code in (401, 403):
             return {"ok": False, "no_key": True,
                     "error": "Gemini API key ไม่ถูกต้องหรือถูกปิดสิทธิ์ — ตรวจสอบที่ aistudio.google.com/apikey"}
-        if resp.status_code == 429:
-            return {"ok": False, "error": "โควตาฟรีของ Gemini เต็มชั่วคราว — รอสักครู่แล้วลองใหม่"}
+        # 429=โควตารุ่นนี้หมด, 404=ไม่มีรุ่นนี้, 503=รุ่นนี้แน่น → ลองรุ่นถัดไป
+        if resp.status_code in (429, 404, 503):
+            last_err = {429: "โควตาฟรีเต็มทุกรุ่น — รอสักครู่แล้วลองใหม่",
+                        404: "ไม่พบรุ่น Gemini ที่รองรับ",
+                        503: "Gemini แน่นทุกรุ่นชั่วคราว — ลองใหม่ภายหลัง"}[resp.status_code]
+            continue
         if resp.status_code != 200:
             detail = ""
             try:
@@ -178,22 +197,21 @@ def _call_gemini(key, system, user_msg):
             except Exception:
                 pass
             return {"ok": False, "error": f"Gemini ขัดข้อง (HTTP {resp.status_code}) {detail}"}
+
         data = resp.json()
         cands = data.get("candidates") or []
         if not cands:
             block = (data.get("promptFeedback") or {}).get("blockReason")
-            return {"ok": False, "error": f"Gemini ไม่ส่งคำตอบ{' (ถูกกรอง: '+block+')' if block else ''} — ลองใหม่"}
+            return {"ok": False,
+                    "error": f"Gemini ไม่ส่งคำตอบ{' (ถูกกรอง: '+block+')' if block else ''} — ลองใหม่"}
         parts = (cands[0].get("content") or {}).get("parts") or []
         text = "".join(p.get("text", "") for p in parts).strip()
         if not text:
-            return {"ok": False, "error": "Gemini ส่งคำตอบว่าง — ลองใหม่อีกครั้ง"}
-        return {"ok": True, "analysis": text, "model": GEMINI_MODEL + " (ฟรี)"}
-    except requests.Timeout:
-        return {"ok": False, "error": "Gemini ตอบช้าเกินไป — ลองใหม่อีกครั้ง"}
-    except requests.ConnectionError:
-        return {"ok": False, "error": "เชื่อมต่อ Gemini ไม่ได้ — ตรวจสอบอินเทอร์เน็ต"}
-    except Exception as e:
-        return {"ok": False, "error": f"วิเคราะห์ไม่สำเร็จ: {str(e)[:120]}"}
+            last_err = "Gemini ส่งคำตอบว่าง"
+            continue
+        return {"ok": True, "analysis": text, "model": model + " (ฟรี)"}
+
+    return {"ok": False, "error": last_err}
 
 
 def analyze_with_ai(ticker, r, smart=None, insider=None, news_titles=None, force=False):
