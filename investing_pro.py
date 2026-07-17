@@ -367,10 +367,13 @@ def live_quotes(tickers):
 
     need = [t for t in tickers if t not in _quote_cache or now - _quote_cache[t][0] > 20]
     if need:
-        ex = concurrent.futures.ThreadPoolExecutor(max_workers=8)
+        # รอบแรก (แคชเย็น) ต้องดึงทุกตัวพร้อมกัน — เดิม deadline 15 วิ ทำให้บางตัวไม่ทัน
+        # แล้วการ์ดตัวนั้นตกไปใช้ราคาเก่า → เห็นข้อมูลไม่เท่ากันระหว่างการ์ด
+        deadline = 30 if len(need) > 5 else 15
+        ex = concurrent.futures.ThreadPoolExecutor(max_workers=12)
         try:
             futs = {ex.submit(one, t): t for t in need}
-            done, _ = concurrent.futures.wait(futs, timeout=15)
+            done, _ = concurrent.futures.wait(futs, timeout=deadline)
             for f in done:
                 try:
                     q = f.result()

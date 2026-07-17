@@ -866,18 +866,34 @@ function card(r){
       <div class="vdesc">${r.value_desc||''}</div>
     </div>`;
 
-  // แถวราคานอกเวลา (pre/post): แสดงเฉพาะตอนที่ยังไม่มีราคาสด — ถ้ามีราคาสดแล้ว
-  // ราคาหลักบนการ์ดคือราคา pre/post อยู่แล้ว (มี mktTag กำกับ) จึงไม่โชว์ซ้ำให้ % ขัดกัน
+  // แถวราคานอกเวลา (pre/post) — แสดง "ทุกใบ" ที่อยู่ในช่วงนอกเวลาทำการ
+  // เดิมซ่อนแถวนี้เมื่อมีราคาสด ทำให้การ์ดที่ราคาสดดึงไม่ทันเท่านั้นที่โชว์ → เห็นไม่เท่ากัน
+  // ตอนนี้ใช้ราคาสดเป็นหลัก (ตรงกับ headline เสมอ ไม่ขัดกัน) และเสริมราคาปิดจริงเป็นจุดอ้างอิง
   let extLines = '';
-  if(!lq){
-    if(r.pre_price != null){
-      const pu = r.pre_chg >= 0;
-      extLines += `<div class="ext">🌅 ก่อนเปิดตลาด: <b>${fmt(r.pre_price)}</b> <span class="${pu?'up':'down'}">${pu?'+':''}${fmt(r.pre_chg)}%</span></div>`;
+  const st = r.market_state;
+  const ref = r.prev_close != null ? ` · ปิดจริงล่าสุด <b>${fmt(r.prev_close)}</b>` : '';
+  const outPrice = lq ? lq.price : null;
+  const outChg = lq ? lq.chg : null;
+  if(st === 'PRE' || st === 'PREPRE'){
+    const p = outPrice != null ? outPrice : r.pre_price;
+    const c = outPrice != null ? outChg : r.pre_chg;
+    if(p != null){
+      const pu = (c ?? 0) >= 0;
+      extLines += `<div class="ext">🌅 ก่อนเปิดตลาด (pre-market): <b>${fmt(p)}</b> ` +
+        `<span class="${pu?'up':'down'}">${pu?'+':''}${c!=null?fmt(c):'-'}%</span>${ref}</div>`;
     }
-    if(r.post_price != null){
-      const pu = r.post_chg >= 0;
-      extLines += `<div class="ext">🌙 หลังปิด/ข้ามคืน: <b>${fmt(r.post_price)}</b> <span class="${pu?'up':'down'}">${pu?'+':''}${fmt(r.post_chg)}%</span></div>`;
+  } else if(st === 'POST' || st === 'POSTPOST'){
+    const p = outPrice != null ? outPrice : r.post_price;
+    const c = outPrice != null ? outChg : r.post_chg;
+    if(p != null){
+      const pu = (c ?? 0) >= 0;
+      extLines += `<div class="ext">🌙 หลังปิด/ข้ามคืน (after-hours): <b>${fmt(p)}</b> ` +
+        `<span class="${pu?'up':'down'}">${pu?'+':''}${c!=null?fmt(c):'-'}%</span>${ref}</div>`;
     }
+  } else if(st === 'CLOSED' && r.post_price != null){
+    const pu = (r.post_chg ?? 0) >= 0;
+    extLines += `<div class="ext">🌙 ซื้อขายนอกเวลาล่าสุด: <b>${fmt(r.post_price)}</b> ` +
+      `<span class="${pu?'up':'down'}">${pu?'+':''}${fmt(r.post_chg)}%</span>${ref}</div>`;
   }
 
   const adviceBlock = r.advice_label ? `<div class="advice ad-${r.advice_tone}">
