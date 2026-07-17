@@ -284,20 +284,27 @@ def api_ai(ticker):
     try:
         r = core.analyze(ticker, read_config())
         smart = insider_sum = None
-        news_titles = []
+        news_items = []
         try:
             sigs = news_mod.smart_money_signals([ticker])
             smart = sigs[0] if sigs else None
             items = news_mod.get_insider([ticker])
             overview = news_mod.get_insider_overview([ticker], items)
             insider_sum = overview[0] if overview else None
-            news_titles = [n.get("title_th") or n.get("title")
-                           for n in news_mod.get_news([ticker], max_items=10)
-                           if n.get("ticker") == ticker or True][:6]
+            # ข่าวเฉพาะหุ้นตัวนี้ขึ้นก่อน แล้วเติมด้วยข่าวตลาดทั่วไป + ส่งเนื้อข่าวย่อ
+            raw = news_mod.get_news([ticker], max_items=20)
+            own = [n for n in raw if n.get("ticker") == ticker]
+            gen = [n for n in raw if n.get("ticker") != ticker]
+            news_items = [{
+                "หัวข้อ": n.get("title_th") or n.get("title"),
+                "สรุป": (n.get("summary_th") or n.get("summary") or "")[:200],
+                "แหล่ง": n.get("source"),
+                "เกี่ยวกับหุ้นนี้โดยตรง": n.get("ticker") == ticker,
+            } for n in (own + gen)[:6]]
         except Exception:
             pass  # ข้อมูลเสริมล่มไม่ควรทำให้ AI วิเคราะห์ไม่ได้ — ใช้เท่าที่มี
         result = ai_mod.analyze_with_ai(ticker, r, smart=smart, insider=insider_sum,
-                                        news_titles=news_titles, force=force)
+                                        news_items=news_items, force=force)
         return jsonify(result), (200 if result.get("ok") else 502)
     except Exception as e:
         return jsonify({"ok": False, "error": f"เตรียมข้อมูลไม่สำเร็จ: {str(e)[:120]}"}), 500
