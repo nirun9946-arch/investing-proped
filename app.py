@@ -228,6 +228,16 @@ def api_insider():
         return jsonify({"error": str(e), "items": [], "summary": []}), 500
 
 
+@app.route("/api/flows")
+def api_flows():
+    """เงินสถาบัน/กองทุนเข้า-ออก (จากรายงาน 13F รายไตรมาส ไม่ใช่เรียลไทม์)"""
+    force = request.args.get("refresh") == "1"
+    try:
+        return jsonify({"items": news_mod.get_flows(_tickers_param(), force=force)})
+    except Exception as e:
+        return jsonify({"error": str(e), "items": []}), 500
+
+
 @app.route("/api/quotes")
 def api_quotes():
     try:

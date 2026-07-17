@@ -302,6 +302,20 @@
   .is-card .is-note.none{color:var(--muted);font-weight:500}
   .is-card .is-own{color:var(--muted)}
   .is-card .is-own b{color:var(--text)}
+  /* เงินสถาบัน/กองทุน — ใช้ .is-card เดิม เพิ่มเฉพาะส่วนรายชื่อผู้ถือ */
+  .flow-sec{margin-bottom:18px}
+  .flow-sec-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 8px;
+    font-size:.95rem;font-weight:800}
+  .flow-asof{font-size:.76rem;font-weight:600;color:var(--muted);background:var(--card2);
+    border:1px solid var(--border);border-radius:12px;padding:3px 10px}
+  .is-card .fh-list{margin-top:8px;border-top:1px solid var(--border);padding-top:8px}
+  .is-card .fh-row{display:flex;align-items:center;gap:8px;padding:3px 0}
+  .is-card .fh-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .is-card .fh-held{color:var(--muted);font-variant-numeric:tabular-nums}
+  .is-card .fh-chg{font-weight:700;font-variant-numeric:tabular-nums;min-width:64px;text-align:right}
+  .is-card .fh-chg.up{color:var(--green)}
+  .is-card .fh-chg.down{color:var(--red)}
+  .is-card .fh-chg.flat{color:var(--muted)}
   #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,.92);
     backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.14);
     padding:12px 22px;border-radius:var(--r-block);display:none;z-index:99;font-weight:600;
@@ -463,6 +477,7 @@
     แต่ถ้าผู้บริหารหลายคนขายพร้อมกันจำนวนมาก ควรระวังเป็นพิเศษ
   </div>
   <div id="insList"><div class="news-loading">⏳ กำลังโหลด...</div></div>
+  <div id="flowSec" class="flow-sec"></div>
 </div>
 
 <div id="page-calendar" style="display:none">
@@ -1119,6 +1134,7 @@ async function loadInsider(force){
     '<div class="news-loading">⏳ กำลังดึงข้อมูลการซื้อขายของผู้บริหาร...</div>';
   try{
     await getWatchlist();
+    loadFlows(force);  // โหลดคู่ขนาน — ไม่ให้บล็อกรายการซื้อขายผู้บริหาร (จับ error เองแล้ว)
     const r = await fetchWithTimeout('/api/insider?' + tickersQS() + (force ? '&refresh=1' : ''), 60000);
     const j = await r.json();
     if((j.items && j.items.length) || (j.summary && j.summary.length)){
@@ -1150,6 +1166,75 @@ function insSummaryCard(s){
     ${flow.length ? `<div>${flow.join(' · ')}</div>` : ''}
     <div class="is-own">คนในองค์กรถือหุ้น <b>${ins}</b> · สถาบันถือ <b>${inst}</b></div>
   </div>`;
+}
+
+// ================= เงินสถาบัน/กองทุน เข้า-ออก (13F รายไตรมาส) =================
+function escHtml(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// วันที่รายงาน 2026-03-31 -> "31 มี.ค. 2569" (ต้องบอกให้ชัดว่าเป็นข้อมูล ณ ไตรมาสไหน)
+function thDate(iso){
+  if(!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  if(isNaN(d)) return iso;
+  return d.getDate() + ' ' + THAI_MONTHS[d.getMonth()] + ' ' + (d.getFullYear() + 543);
+}
+
+function flowCard(f){
+  const pct = v => v == null ? '-' : (v * 100).toFixed(2) + '%';
+  const rows = (f.top || []).map(h => {
+    const c = h.pct_change;
+    const cls = c > 0 ? 'up' : (c < 0 ? 'down' : 'flat');
+    const dot = c > 0 ? '🟢' : (c < 0 ? '🔴' : '⚪');
+    const txt = c == null ? '-' : (c > 0 ? '+' : '') + (c * 100).toFixed(1) + '%';
+    const tag = h.kind === 'fund' ? ' <span class="fh-held">(กองทุนรวม)</span>' : '';
+    // รายที่ยื่นคนละรอบกับการ์ด ต้องกำกับวันของตัวเอง ไม่งั้นเข้าใจผิดว่าเป็นรอบเดียวกัน
+    const od = (h.date && h.date !== f.as_of)
+      ? ` <span class="fh-held">· ณ ${thDate(h.date)}</span>` : '';
+    return `<div class="fh-row">
+      <span class="fh-name">${dot} ${escHtml(h.holder)}${tag}${od}</span>
+      <span class="fh-held">ถือ ${pct(h.pct_held)}</span>
+      <span class="fh-chg ${cls}">${txt}</span>
+    </div>`;
+  }).join('');
+  const cnt = f.inst_count != null
+    ? Number(f.inst_count).toLocaleString(undefined,{maximumFractionDigits:0}) + ' ราย' : '-';
+  const moves = [];
+  if(f.up_n) moves.push(`🟢 เพิ่มพอร์ต ${f.up_n} ราย`);
+  if(f.down_n) moves.push(`🔴 ลดพอร์ต ${f.down_n} ราย`);
+  return `<div class="is-card">
+    <div class="is-head"><span class="ntick">${escHtml(f.ticker)}</span>
+      <span class="is-note ${f.tone}">${escHtml(f.note)}</span></div>
+    ${moves.length ? `<div>${moves.join(' · ')}</div>` : ''}
+    <div class="is-own">สถาบันถือรวม <b>${pct(f.inst_pct)}</b> · จำนวน <b>${cnt}</b></div>
+    ${rows ? `<div class="fh-list">${rows}</div>` : ''}
+  </div>`;
+}
+
+async function loadFlows(force){
+  const box = document.getElementById('flowSec');
+  box.innerHTML = '<div class="news-loading">⏳ กำลังโหลดข้อมูลผู้ถือหุ้นสถาบัน...</div>';
+  try{
+    const r = await fetchWithTimeout('/api/flows?' + tickersQS() + (force ? '&refresh=1' : ''), 60000);
+    const j = await r.json();
+    const items = j.items || [];
+    if(!items.length){ box.innerHTML = ''; return; }
+    const asOf = items.map(i => i.as_of).filter(Boolean).sort().pop();
+    box.innerHTML = `
+      <h3 class="flow-sec-h">🏦 เงินสถาบัน/กองทุน เข้าหรือออก
+        ${asOf ? `<span class="flow-asof">ข้อมูล ณ ${thDate(asOf)}</span>` : ''}</h3>
+      <div class="ins-note">
+        💡 <b>อ่านตรงนี้ก่อน:</b> ตัวเลขนี้มาจากรายงาน <b>13F ที่ยื่นเป็นรายไตรมาส</b>
+        ${asOf ? `(รอบล่าสุด ${thDate(asOf)})` : ''} —
+        <b style="color:var(--yellow)">ไม่ใช่การซื้อขายของวันนี้</b> และมักรายงานช้ากว่าความเป็นจริงหลายสัปดาห์
+        ใช้ดูทิศทางการสะสม/ลดพอร์ตระยะยาว ไม่ใช่สัญญาณเข้า-ออกรายวัน
+      </div>
+      <div class="ins-sum">${items.map(flowCard).join('')}</div>`;
+  }catch(e){
+    box.innerHTML = '<div class="news-loading">❌ โหลดข้อมูลสถาบันไม่สำเร็จ</div>';
+  }
 }
 
 // ================= หน้าปฏิทินตลาด =================

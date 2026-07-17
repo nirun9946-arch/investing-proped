@@ -9,6 +9,7 @@ import concurrent.futures
 import html
 import re
 import time
+from collections import Counter
 from datetime import datetime, timezone
 
 import feedparser
@@ -435,6 +436,129 @@ def get_insider_overview(tickers, items):
                     "buy_n": buy_n, "sell_n": sell_n, "net": net,
                     "insiders": own.get("insiders"),
                     "institutions": own.get("institutions"),
+                    "note": note, "tone": tone})
+    return out
+
+
+# ----------------------------------------------------------------------
+# เงินสถาบัน/กองทุน: ใครเพิ่มพอร์ต ใครลดพอร์ต (จากรายงาน 13F รายไตรมาส)
+# ----------------------------------------------------------------------
+_flow_cache = {}  # ticker -> (ts, payload) — ข้อมูลรายไตรมาส แคชได้ยาว (12 ชม.)
+_FLOW_TTL = 43200
+
+
+def _fnum(v):
+    """float ที่กัน None/NaN/ค่าว่าง (NaN != NaN — ไม่ต้อง import pandas)"""
+    try:
+        if v is None:
+            return None
+        f = float(v)
+        return None if f != f else f
+    except (TypeError, ValueError):
+        return None
+
+
+def _holder_rows(df, kind):
+    """แปลงตาราง holders ของ yfinance เป็น list ธรรมดา (คอลัมน์: Date Reported, Holder,
+    pctHeld, Shares, Value, pctChange — pctChange บวก = เพิ่มพอร์ต, ลบ = ลดพอร์ต)"""
+    rows = []
+    if df is None or getattr(df, "empty", True):
+        return rows
+    for _, r in df.iterrows():
+        try:
+            name = str(r.get("Holder") or "").strip()
+            if not name:
+                continue
+            chg = _fnum(r.get("pctChange"))
+            held = _fnum(r.get("pctHeld"))
+            val = _fnum(r.get("Value"))
+            d = r.get("Date Reported")
+            rows.append({"holder": name, "kind": kind, "pct_held": held,
+                         "pct_change": chg, "value": val,
+                         "date": str(d)[:10] if d is not None else None})
+        except Exception:
+            continue
+    return rows
+
+
+def _flows_one(t):
+    import yfinance as yf
+    tk = yf.Ticker(t)
+    rows = []
+    for attr, kind in (("institutional_holders", "inst"), ("mutualfund_holders", "fund")):
+        try:
+            rows += _holder_rows(getattr(tk, attr, None), kind)
+        except Exception:
+            pass
+    inst_count = inst_pct = None
+    try:
+        mh = tk.major_holders
+        if mh is not None and not mh.empty and "Value" in mh.columns:
+            g = lambda k: (_fnum(mh.loc[k, "Value"]) if k in mh.index else None)
+            inst_count, inst_pct = g("institutionsCount"), g("institutionsPercentHeld")
+    except Exception:
+        pass
+    return {"rows": rows, "inst_count": inst_count, "inst_pct": inst_pct}
+
+
+def get_flows(tickers, force=False):
+    """สรุปว่าสถาบัน/กองทุนกำลังเพิ่มหรือลดพอร์ตในแต่ละหุ้น
+
+    หมายเหตุสำคัญ: ข้อมูลนี้มาจากรายงาน 13F ที่ยื่นเป็น "รายไตรมาส" (ดูฟิลด์ as_of)
+    ไม่ใช่การซื้อขายแบบเรียลไทม์ของวันนี้
+    """
+    now = time.time()
+    tickers = [t.upper() for t in tickers][:15]
+    need = [t for t in tickers
+            if force or t not in _flow_cache or now - _flow_cache[t][0] >= _FLOW_TTL]
+    if need:
+        ex = concurrent.futures.ThreadPoolExecutor(max_workers=6)
+        try:
+            futs = {ex.submit(_flows_one, t): t for t in need}
+            done, _ = concurrent.futures.wait(futs, timeout=25)  # เส้นตาย กันหน้าค้าง
+            for f in done:
+                try:
+                    _flow_cache[futs[f]] = (now, f.result())
+                except Exception:
+                    pass
+        finally:
+            ex.shutdown(wait=False)
+
+    out = []
+    for t in tickers:
+        c = _flow_cache.get(t)
+        if not c:
+            continue
+        data = c[1]
+        rows = data["rows"]
+        if not rows and data.get("inst_pct") is None:
+            continue
+        up = [r for r in rows if (r["pct_change"] or 0) > 0]
+        down = [r for r in rows if (r["pct_change"] or 0) < 0]
+        # ถ่วงน้ำหนักด้วยขนาดพอร์ต: รายใหญ่ขยับ 1% สำคัญกว่ารายเล็กขยับ 50%
+        weighted = sum((r["pct_change"] or 0) * (r["pct_held"] or 0) for r in rows)
+        if not rows:
+            note, tone = "ไม่มีรายละเอียดผู้ถือหุ้นสถาบันสำหรับหุ้นตัวนี้", "none"
+        elif weighted > 0 and len(up) > len(down):
+            note, tone = "เงินสถาบันไหลเข้า — ส่วนใหญ่เพิ่มพอร์ต", "buy"
+        elif weighted < 0 and len(down) > len(up):
+            note, tone = "เงินสถาบันไหลออก — ส่วนใหญ่ลดพอร์ต", "sell"
+        elif weighted > 0:
+            note, tone = "ไหลเข้าเล็กน้อย — รายใหญ่เพิ่มพอร์ตมากกว่าที่ลด", "buy"
+        elif weighted < 0:
+            note, tone = "ไหลออกเล็กน้อย — รายใหญ่ลดพอร์ตมากกว่าที่เพิ่ม", "sell"
+        else:
+            note, tone = "ทรงตัว — สถาบันไม่ได้ขยับพอร์ตอย่างมีนัย", "none"
+        top = sorted(rows, key=lambda r: r["pct_held"] or 0, reverse=True)[:5]
+        # แต่ละรายยื่นรายงานคนละรอบ (13F รายไตรมาส แต่ ETF บางกองยื่นรายเดือน)
+        # → ใช้ "วันที่ที่พบมากที่สุด" เป็นรอบอ้างอิงของการ์ด ไม่ใช่ max()
+        #   เพราะ max() จะไปหยิบรอบของ ETF ไม่กี่กองมากำกับทั้งใบ ทำให้ดูสดเกินจริง
+        dates = [r["date"] for r in rows if r["date"]]
+        as_of = Counter(dates).most_common(1)[0][0] if dates else None
+        out.append({"ticker": t, "up_n": len(up), "down_n": len(down),
+                    "inst_count": data.get("inst_count"),
+                    "inst_pct": data.get("inst_pct"),
+                    "top": top, "as_of": as_of,
                     "note": note, "tone": tone})
     return out
 

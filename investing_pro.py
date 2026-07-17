@@ -213,6 +213,41 @@ def fetch(ticker, period="1y", interval="1d"):
 
 _fund_cache = {}  # ticker -> (ts, out) ค่าล่าสุดที่สำเร็จ — ใช้แทนเมื่อ Yahoo ล่มชั่วคราว
 
+# ราคาปิดวันก่อนหน้า: ticker -> (ts, prev) แคช 10 นาที
+# (ราคาปิดเปลี่ยนแค่วันละครั้ง แต่ live_quotes ถูกเรียกทุก 15 วิ — ไม่ควรดึง daily history ทุกรอบ)
+_prev_cache = {}
+_PREV_TTL = 600
+
+
+def prev_close(ticker, tk=None):
+    """ราคาปิดล่าสุดที่ 'จบวันแล้ว' — ฐานที่ถูกต้องสำหรับคำนวณ % เปลี่ยนแปลง
+
+    ไม่ใช้ fast_info.previous_close และ info.previousClose เพราะทั้งคู่ไม่น่าเชื่อถือ:
+    ค่าเพี้ยนไปจากราคาปิดจริง หรือช้าไป 1 วัน ทำให้ % บนการ์ดผิด (บางตัวเครื่องหมายกลับข้าง)
+    → หาจาก daily history โดยตรง ซึ่งเป็นแหล่งเดียวกับราคาปิดที่แสดงบนการ์ด
+    """
+    now = time.time()
+    c = _prev_cache.get(ticker)
+    if c and now - c[0] < _PREV_TTL:
+        return c[1]
+    try:
+        tk = tk or yf.Ticker(ticker)
+        h = tk.history(period="5d", interval="1d")
+        if h is None or h.empty:
+            return c[1] if c else None
+        # ใช้ timezone จาก index ของ history เอง — หุ้นไทย (.BK) คนละโซนกับ NY
+        tz = getattr(h.index, "tz", None)
+        today = (pd.Timestamp.now(tz=tz) if tz is not None else pd.Timestamp.now()).date()
+        # แท่งวันสุดท้ายเป็นของ "วันนี้" (ตลาดเปิดแล้ว) → ปิดก่อนหน้าคือแท่งรองสุดท้าย
+        if h.index[-1].date() == today and len(h) >= 2:
+            prev = float(h["Close"].iloc[-2])
+        else:
+            prev = float(h["Close"].iloc[-1])
+        _prev_cache[ticker] = (now, prev)
+        return prev
+    except Exception:
+        return c[1] if c else None
+
 
 def fundamentals(tk, price):
     """ดึงข้อมูลพื้นฐาน: ราคาปิด, P/E, เป้านักวิเคราะห์ + ประเมินความคุ้มค่าของราคา"""
@@ -232,7 +267,9 @@ def fundamentals(tk, price):
         cached = _fund_cache.get(sym)
         return dict(cached[1]) if cached else out
 
-    out["prev_close"] = info.get("previousClose")
+    # ใช้ค่าเดียวกับที่ live_quotes ใช้เป็นฐาน % — ทั้งการ์ดจึงสอดคล้องกัน
+    # (info.previousClose ช้าไป 1 วัน เช่น NVDA โชว์ 212.5 แทนที่จะเป็น 207.40)
+    out["prev_close"] = prev_close(sym, tk) or info.get("previousClose")
 
     # ราคานอกเวลาทำการ: ก่อนเปิด (pre-market) / หลังปิด-ข้ามคืน (post-market)
     pre = info.get("preMarketPrice")
@@ -321,11 +358,7 @@ def live_quotes(tickers):
             if h is None or h.empty:
                 return None
             last = float(h["Close"].iloc[-1])
-            prev = None
-            try:
-                prev = float(tk.fast_info.previous_close)
-            except Exception:
-                pass
+            prev = prev_close(t, tk)  # จาก daily history (แคชแยก 10 นาที) ไม่ใช่ fast_info
             return {"ticker": t, "price": last,
                     "chg": (last / prev - 1) * 100 if prev else None,
                     "ts": str(h.index[-1])}
