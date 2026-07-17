@@ -26,7 +26,10 @@ CLAUDE_MODEL = "claude-opus-4-8"
 # ลองรุ่นตามลำดับ — 2.5-flash มีโควตาฟรีสำหรับคีย์ใหม่ (2.0-flash โควตาเป็น 0)
 # ถ้ารุ่นแรกติด 429/404/503 จะสลับไปตัวถัดไปอัตโนมัติ
 GEMINI_MODELS = [os.environ.get("GEMINI_MODEL")] if os.environ.get("GEMINI_MODEL") else []
-GEMINI_MODELS += ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"]
+# แต่ละรุ่นมีโควตาฟรี "แยกกัน" (~20 ครั้ง/วัน/รุ่น) — ใส่หลายรุ่นให้ได้โควตารวมมากขึ้น
+# ถ้ารุ่นแรกโควตาหมด (429) ระบบสลับไปรุ่นถัดไปที่ยังเหลือเอง
+GEMINI_MODELS += ["gemini-2.5-flash", "gemini-2.0-flash-lite",
+                  "gemini-flash-latest", "gemini-2.5-flash-lite"]
 GEMINI_MODELS = [m for i, m in enumerate(GEMINI_MODELS) if m and m not in GEMINI_MODELS[:i]]
 _cache = {}   # ticker -> (ts, analysis_text)
 AI_TTL = 3600  # วิเคราะห์ซ้ำตัวเดิมไม่เกินชั่วโมงละครั้ง — คุมค่าใช้จ่าย
