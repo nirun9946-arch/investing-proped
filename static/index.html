@@ -6,7 +6,9 @@
 <title>📈 Investing Pro</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpolygon points='32,4 56,18 56,46 32,60 8,46 8,18' fill='%230e8fd0'/%3E%3Cpolyline points='18,40 27,31 34,36 46,22' stroke='white' stroke-width='5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='46' cy='22' r='4' fill='white'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Noto+Sans+Thai:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://db.onlinewebfonts.com/c/04e6981992c0e2e7642af2074ebe3901?family=Helvetica+Now+Display+Bold" rel="stylesheet">
 <style>
   :root{
     --bg:#0f172a; --card:rgba(30,41,59,.55); --card2:rgba(15,23,42,.6); --border:rgba(255,255,255,.09);
@@ -15,13 +17,17 @@
     --red:#f87171; --red-bg:rgba(248,113,113,.13);
     --yellow:#fbbf24; --yellow-bg:rgba(251,191,36,.13);
     --blue:#60a5fa; --blue-bg:rgba(96,165,250,.13);
+    --purple:#7342E2; --purple-hi:#a78bfa; --purple-bg:rgba(115,66,226,.15);
     --r-card:24px; --r-item:20px; --r-block:14px; --r-ctl:10px;
     --shadow-card:0 14px 34px -12px rgba(0,0,0,.5);
     --shadow-item:0 10px 26px -12px rgba(0,0,0,.5);
-    --ring:0 0 0 3px rgba(96,165,250,.16);
+    --ring:0 0 0 3px rgba(115,66,226,.22);
+    --font-body:'Inter','Noto Sans Thai','Segoe UI',Tahoma,sans-serif;
+    --font-heading:'Helvetica Now Display Bold','Inter','Noto Sans Thai','Segoe UI',Tahoma,sans-serif;
+    --ease-spring:cubic-bezier(0.22,1,0.36,1);
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Inter','Segoe UI',Tahoma,sans-serif;background-color:#0f172a;color:var(--text);min-height:100vh;
+  body{font-family:var(--font-body);background-color:#0f172a;color:var(--text);min-height:100vh;
     background-image:linear-gradient(to bottom,rgba(15,23,42,.86),rgba(15,23,42,.96)),
       url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop');
     background-size:cover;background-position:center;background-attachment:fixed}
@@ -34,14 +40,19 @@
     border:1px solid rgba(255,255,255,.08);box-shadow:0 14px 34px -12px rgba(0,0,0,.5)}
   header{position:sticky;top:0;z-index:10;background:rgba(15,23,42,.8);backdrop-filter:blur(20px);
     border-bottom:1px solid rgba(255,255,255,.08);box-shadow:0 4px 20px rgba(0,0,0,.3);
-    padding:16px 22px 14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;overflow:hidden}
-  header::after{content:'';position:absolute;right:-36px;top:-46px;width:150px;height:150px;pointer-events:none;
-    background:linear-gradient(135deg,rgba(96,165,250,.14),rgba(96,165,250,.03));
+    padding:14px 22px 12px}
+  .nav-inner{max-width:1280px;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  #menuBtn{display:none;background:var(--card);border:1px solid var(--border);color:var(--text);
+    width:42px;height:42px;padding:0;border-radius:12px;font-size:1.2rem;line-height:1;
+    align-items:center;justify-content:center}
+  #menuBtn:hover{border-color:var(--purple-hi)}
+  header::after{content:'';position:absolute;right:0;top:-64px;width:150px;height:150px;pointer-events:none;
+    background:linear-gradient(135deg,rgba(115,66,226,.2),rgba(115,66,226,.04));
     clip-path:polygon(25% 5%,75% 5%,100% 50%,75% 95%,25% 95%,0 50%)}
-  header::before{content:'';position:absolute;right:70px;top:38px;width:64px;height:64px;pointer-events:none;
+  header::before{content:'';position:absolute;right:96px;top:6px;width:52px;height:52px;pointer-events:none;
     background:linear-gradient(135deg,rgba(52,211,153,.12),rgba(52,211,153,.03));
     clip-path:polygon(25% 5%,75% 5%,100% 50%,75% 95%,25% 95%,0 50%)}
-  header h1{font-size:1.25rem;font-weight:700}
+  header h1{font-size:1.25rem;font-weight:700;font-family:var(--font-heading)}
   header h1 span{color:var(--blue)}
   .spacer{flex:1}
   .addbox{display:flex;gap:8px}
@@ -237,21 +248,66 @@
   .mk-chg{font-size:.78rem;font-weight:700;margin-left:6px;font-variant-numeric:tabular-nums}
   .mk-loading{color:var(--muted);font-size:.85rem;padding:6px 2px}
   #hero{margin:18px 22px 0;border-radius:var(--r-card);position:relative;overflow:hidden;
-    background-image:linear-gradient(135deg,rgba(16,185,129,.72),rgba(15,23,42,.78)),
-      url('https://images.unsplash.com/photo-1642790106117-e829e14a795f?q=80&w=2000&auto=format&fit=crop');
-    background-size:cover;background-position:center;color:#fff;
-    display:flex;align-items:center;gap:24px;padding:26px 32px;flex-wrap:wrap;
-    border:1px solid rgba(16,185,129,.3);box-shadow:0 20px 40px -10px rgba(16,185,129,.2)}
-  #hero .hero-text{flex:1;min-width:260px;position:relative;z-index:2}
-  #hero h2{font-size:1.45rem;line-height:1.4;font-weight:800}
-  #hero h2 span{display:block;color:#cdeafb;font-weight:600;font-size:1.02rem;margin-top:4px}
-  #hero p{margin-top:10px;color:#e2f3fd;font-size:.9rem;line-height:1.5}
-  .src-badges{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
-  .src-badges span{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);
-    padding:5px 14px;border-radius:16px;font-size:.78rem;font-weight:700;letter-spacing:.3px}
+    background:linear-gradient(120deg,#1a1035 0%,#0f172a 52%,#131f36 100%);color:#fff;
+    display:flex;align-items:center;gap:24px;padding:36px 38px;flex-wrap:wrap;
+    border:1px solid rgba(115,66,226,.35);box-shadow:0 20px 44px -12px rgba(115,66,226,.28)}
+  #hero .hero-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+  #hero .hero-ov{position:absolute;inset:0;z-index:1;pointer-events:none;
+    background:linear-gradient(100deg,rgba(9,7,22,.9) 0%,rgba(15,23,42,.74) 55%,rgba(115,66,226,.3) 100%)}
+  #hero .hero-text{flex:1;min-width:260px;max-width:660px;position:relative;z-index:2}
+  #hero h2{font-family:var(--font-heading);font-size:clamp(1.65rem,5vw,3rem);
+    line-height:1.05;letter-spacing:-0.01em;font-weight:800}
+  #hero h2 .h-ic{width:24px;height:24px;vertical-align:middle;position:relative;top:-2px;
+    display:inline-block;filter:drop-shadow(0 0 8px rgba(115,66,226,.55))}
+  #hero p{font-size:clamp(0.9rem,2.5vw,1.1rem);line-height:1.65;opacity:.8;max-width:560px;margin-top:14px}
+  .cta-btn{display:inline-flex;align-items:center;justify-content:center;gap:11px;
+    background:var(--purple);color:#fff;border:none;border-radius:50px;
+    padding:17px 24px;min-width:210px;font-size:1rem;font-weight:700;font-family:var(--font-body);
+    box-shadow:0 4px 24px rgba(115,66,226,.28);cursor:pointer;margin-top:20px;
+    transition:transform .22s var(--ease-spring),filter .22s ease,box-shadow .22s ease}
+  .cta-btn:hover{transform:scale(1.04);filter:brightness(1.1);box-shadow:0 6px 30px rgba(115,66,226,.45)}
+  .cta-btn:active{transform:scale(.96)}
+  .cta-arr{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.2);flex:none;
+    display:inline-flex;align-items:center;justify-content:center}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:translateY(0)}}
+  .fade-up{animation:fadeUp .6s var(--ease-spring) both}
+  .fade-up.d1{animation-delay:.15s}
+  .fade-up.d2{animation-delay:.3s}
+  .src-badges{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap}
+  .src-badges span{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.32);
+    backdrop-filter:blur(6px);padding:5px 14px;border-radius:16px;font-size:.78rem;font-weight:700;letter-spacing:.3px}
   .hero-art{width:330px;max-width:100%;flex:none;margin-left:auto;position:relative;z-index:2}
-  #hero .hx{position:absolute;pointer-events:none;background:rgba(255,255,255,.07);
-    clip-path:polygon(25% 5%,75% 5%,100% 50%,75% 95%,25% 95%,0 50%)}
+  /* ===== เมนูมือถือสไลด์จากขวา (สไตล์ VaultShield) ===== */
+  #mbBackdrop{position:fixed;inset:0;z-index:80;background:rgba(25,40,55,.35);
+    backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+    opacity:0;pointer-events:none;transition:opacity .35s ease}
+  body.menu-open #mbBackdrop{opacity:1;pointer-events:auto}
+  #mbSheet{position:fixed;top:0;right:0;height:100dvh;width:min(88vw,360px);z-index:90;
+    background:linear-gradient(160deg,rgba(26,16,53,.96),rgba(15,23,42,.97));
+    backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+    border-left:1px solid rgba(115,66,226,.3);box-shadow:-18px 0 48px rgba(0,0,0,.5);
+    transform:translateX(105%);transition:transform .45s var(--ease-spring);
+    display:flex;flex-direction:column;gap:8px;padding:20px 22px 26px}
+  body.menu-open #mbSheet{transform:translateX(0)}
+  .mb-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .mb-head .mb-logo{font-weight:800;font-size:1.1rem;font-family:var(--font-heading)}
+  .mb-head .mb-logo b{color:var(--purple-hi)}
+  .mb-close{background:var(--card);border:1px solid var(--border);color:var(--text);
+    width:38px;height:38px;padding:0;border-radius:50%;font-size:1rem}
+  .mb-close:hover{border-color:var(--purple-hi)}
+  .mb-link{background:none;border:1px solid transparent;color:var(--text);text-align:left;
+    font-size:1.05rem;font-weight:700;padding:14px 16px;border-radius:16px;
+    opacity:0;transform:translateX(26px)}
+  .mb-link:hover{background:rgba(255,255,255,.06)}
+  .mb-link.active{background:var(--purple-bg);border-color:rgba(115,66,226,.45);color:var(--purple-hi)}
+  .mb-cta{margin-top:auto;opacity:0;transform:translateX(26px);width:100%}
+  body.menu-open .mb-link,body.menu-open .mb-cta{opacity:1;transform:translateX(0);
+    transition:opacity .4s ease,transform .45s var(--ease-spring)}
+  body.menu-open .mb-link:nth-of-type(1){transition-delay:.18s}
+  body.menu-open .mb-link:nth-of-type(2){transition-delay:.25s}
+  body.menu-open .mb-link:nth-of-type(3){transition-delay:.32s}
+  body.menu-open .mb-link:nth-of-type(4){transition-delay:.39s}
+  body.menu-open .mb-cta{transition-delay:.46s}
   footer{margin-top:30px;border-top:1px solid var(--border);background:var(--card);
     padding:22px;text-align:center;color:var(--muted);font-size:.84rem;line-height:1.8}
   footer .fbrand{font-weight:800;color:var(--text);font-size:.95rem}
@@ -278,13 +334,13 @@
   #portTabs{display:flex;gap:8px;flex-wrap:wrap;padding:14px 22px 0}
   .ptab{background:var(--card);border:1px solid var(--border);color:var(--muted);
     border-radius:18px;padding:8px 18px;font-weight:700}
-  .ptab.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+  .ptab.active{background:var(--purple);color:#fff;border-color:var(--purple)}
   .ptab.pedit{padding:8px 12px}
-  .ptab:hover{border-color:var(--blue)}
+  .ptab:hover{border-color:var(--purple-hi)}
   .ptab:hover:not(.active){color:var(--text)}
-  .tabs{display:flex;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:4px}
-  .tab{background:none;color:var(--muted);padding:7px 18px;border-radius:11px;font-weight:700}
-  .tab.active{background:var(--blue);color:#fff}
+  .tabs{display:flex;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:50px;padding:4px}
+  .tab{background:none;color:var(--muted);padding:7px 18px;border-radius:50px;font-weight:700}
+  .tab.active{background:var(--purple);color:#fff;box-shadow:0 2px 14px rgba(115,66,226,.4)}
   .tab:hover:not(.active){color:var(--text);background:rgba(255,255,255,.07)}
   #page-news{padding:16px 22px 40px;max-width:900px;margin:0 auto}
   .news-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
@@ -397,18 +453,22 @@
     box-shadow:0 12px 32px rgba(0,0,0,.5);animation:toastIn .25s ease;max-width:calc(100vw - 32px)}
   @keyframes toastIn{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
   @media(max-width:640px){
-    header{padding:12px 12px 10px;gap:8px}
+    header{padding:12px 12px 10px}
+    .nav-inner{gap:8px}
     header::before{display:none}
-    .tabs{flex:1 1 100%;justify-content:space-between}
-    .tab{flex:1;padding:7px 6px;font-size:.86rem}
-    .addbox{flex:1 1 auto}
+    header .tabs{display:none}
+    #menuBtn{display:inline-flex;order:2;margin-left:auto}
+    header h1{order:1}
+    .spacer{display:none}
+    .addbox{order:3;flex:1 1 100%}
     .addbox input{width:auto;flex:1;min-width:0}
+    #scanBtn{order:4;flex:1}
+    #authWrap{order:5}
     #authPanel{position:fixed;left:12px;right:12px;top:auto;width:auto;margin-top:8px}
     #mktbar{padding:12px 12px 0;gap:8px}
     .mk-item{min-width:calc(50% - 4px);padding:8px 10px}
-    #hero{margin:14px 12px 0;padding:20px 18px;gap:16px}
-    #hero h2{font-size:1.2rem}
-    #hero h2 span{font-size:.95rem}
+    #hero{margin:14px 12px 0;padding:24px 18px;gap:16px}
+    .cta-btn{width:100%}
     .hero-art{width:100%;margin:0}
     #introCard{margin:14px 12px 0;padding:16px 14px}
     #portTabs{padding:12px 12px 0}
@@ -428,6 +488,7 @@
 <body>
 
 <header>
+ <div class="nav-inner">
   <h1>📈 Investing <span>Pro</span></h1>
   <nav class="tabs">
     <button class="tab active" id="tab-stocks" onclick="switchPage('stocks')">📊 หุ้น</button>
@@ -457,19 +518,48 @@
       </div>
     </div>
   </div>
+  <button id="menuBtn" aria-label="เปิดเมนู" onclick="toggleMenu(true)">☰</button>
+ </div>
 </header>
+
+<div id="mbBackdrop" onclick="toggleMenu(false)"></div>
+<aside id="mbSheet" aria-hidden="true">
+  <div class="mb-head">
+    <span class="mb-logo">📈 Investing <b>Pro</b></span>
+    <button class="mb-close" aria-label="ปิดเมนู" onclick="toggleMenu(false)">✕</button>
+  </div>
+  <button class="mb-link active" id="mbtab-stocks" onclick="goPage('stocks')">📊 หุ้น</button>
+  <button class="mb-link" id="mbtab-news" onclick="goPage('news')">📰 ข่าว</button>
+  <button class="mb-link" id="mbtab-insider" onclick="goPage('insider')">🕵️ วงใน</button>
+  <button class="mb-link" id="mbtab-calendar" onclick="goPage('calendar')">📅 ปฏิทิน</button>
+  <button class="cta-btn mb-cta" onclick="toggleMenu(false);scrollToWatchlist()">ดูวอทช์ลิสต์ของฉัน
+    <span class="cta-arr"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+  </button>
+</aside>
 
 <div id="mktbar"><div class="mk-loading">🌍 กำลังโหลดราคาตลาดโลก...</div></div>
 
 <section id="hero">
-  <span class="hx" style="width:150px;height:150px;right:-40px;top:-50px"></span>
-  <span class="hx" style="width:80px;height:80px;right:90px;bottom:-30px"></span>
-  <span class="hx" style="width:56px;height:56px;left:-18px;bottom:-18px"></span>
+  <video class="hero-vid" autoplay muted loop playsinline preload="metadata" aria-hidden="true"
+    onerror="this.style.display='none'">
+    <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260518_003132_8b7edcb6-c64d-4a52-a9ca-879942e122ad.mp4" type="video/mp4">
+  </video>
+  <div class="hero-ov"></div>
   <div class="hero-text">
-    <h2>วิเคราะห์หุ้นอย่างมืออาชีพ<span>ตัดสินใจบนข้อมูลจริงจากแหล่งที่เชื่อถือได้</span></h2>
-    <p>เทคนิคอล 10+ อินดิเคเตอร์ · Volume Profile · ประเมินความคุ้มค่า P/E · ข่าวแปลไทย ·
-       ข้อมูลวงในจากรายงาน SEC · ปฏิทิน Fed และดัชนีเศรษฐกิจ</p>
-    <div class="src-badges">
+    <h2 class="fade-up">วิเคราะห์หุ้นแม่นยำ
+      <svg class="h-ic" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+      เรียลไทม์ทุกจังหวะ
+      <svg class="h-ic" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      มั่นใจด้วยข้อมูลจริง
+      <svg class="h-ic" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1 1 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg></h2>
+    <p class="fade-up d1">เทคนิคอล 10+ อินดิเคเตอร์ · Volume Profile · ประเมินความคุ้มค่า P/E · ข่าวแปลไทย ·
+       ข้อมูลวงในจากรายงาน SEC · ปฏิทิน Fed และดัชนีเศรษฐกิจ — ตัดสินใจบนข้อมูลจริงจากแหล่งที่เชื่อถือได้</p>
+    <div class="fade-up d2">
+      <button class="cta-btn" onclick="scrollToWatchlist()">เริ่มดูวอทช์ลิสต์
+        <span class="cta-arr"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+      </button>
+    </div>
+    <div class="src-badges fade-up d2">
       <span>Yahoo Finance</span><span>SEC Form 4</span><span>Federal Reserve</span><span>BLS</span><span>CNBC</span><span>MarketWatch</span>
     </div>
   </div>
@@ -1414,13 +1504,30 @@ function switchPage(page){
   document.getElementById('page-news').style.display = page==='news' ? 'block' : 'none';
   document.getElementById('page-insider').style.display = page==='insider' ? 'block' : 'none';
   document.getElementById('page-calendar').style.display = page==='calendar' ? 'block' : 'none';
-  ['stocks','news','insider','calendar'].forEach(p=>
-    document.getElementById('tab-'+p).classList.toggle('active', p===page));
+  ['stocks','news','insider','calendar'].forEach(p=>{
+    document.getElementById('tab-'+p).classList.toggle('active', p===page);
+    const mb = document.getElementById('mbtab-'+p);
+    if(mb) mb.classList.toggle('active', p===page);
+  });
   if(page==='stocks') renderOverview();
   if(page==='news' && !newsLoaded) loadNews(false);
   if(page==='insider' && !insiderLoaded) loadInsider(false);
   if(page==='calendar' && !calendarLoaded) loadCalendar(false);
 }
+
+// ===== เมนูมือถือสไลด์จากขวา =====
+function toggleMenu(open){
+  document.body.classList.toggle('menu-open', !!open);
+  const sh = document.getElementById('mbSheet');
+  if(sh) sh.setAttribute('aria-hidden', open ? 'false' : 'true');
+}
+function goPage(p){ toggleMenu(false); switchPage(p); }
+function scrollToWatchlist(){
+  switchPage('stocks');
+  const el = document.getElementById('grid');
+  if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
+}
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') toggleMenu(false); });
 
 function fetchWithTimeout(url, ms){
   const ctl = new AbortController();
