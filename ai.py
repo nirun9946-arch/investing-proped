@@ -4,12 +4,14 @@ Investing Pro — AI Analyst Module
 ส่งข้อมูลจริงทั้งหมดของหุ้น (เทคนิค + Volume Profile + เงินใหญ่ + ข่าว)
 ให้ AI วิเคราะห์เป็นภาษาไทยแบบนักวิเคราะห์
 
-รองรับ AI 3 เจ้า — ใส่คีย์ตัวไหนก็ใช้ตัวนั้น:
-  • Google Gemini (ฟรี)  → env GEMINI_API_KEY  (สมัครฟรีที่ aistudio.google.com)
+รองรับ AI 4 เจ้า — ใส่คีย์ตัวไหนก็ใช้ตัวนั้น:
+  • Google Gemini (ฟรี ~20 ครั้ง/วัน/รุ่น) → env GEMINI_API_KEY  (aistudio.google.com/apikey)
+  • Groq (ฟรี ~1,000 ครั้ง/วัน เร็วมาก)   → env GROQ_API_KEY    (console.groq.com)
   • DeepSeek จีน (ถูกมาก ไม่ฟรี) → env DEEPSEEK_API_KEY  (platform.deepseek.com)
   • Anthropic Claude (จ่ายตามใช้) → env ANTHROPIC_API_KEY
-หรือใส่ใน config.json: {"ai": {"gemini_key":"...", "deepseek_key":"...", "anthropic_key":"..."}}
-ถ้ามีหลายคีย์ ระบบเลือก Gemini ก่อน (ฟรี) เว้นแต่ตั้ง ai.provider = "deepseek"|"claude"
+หรือใส่ใน config.json: {"ai": {"gemini_key":"...", "groq_key":"...", "deepseek_key":"...", "anthropic_key":"..."}}
+ถ้ามีหลายคีย์ ระบบไล่ลำดับ Gemini → Groq → DeepSeek → Claude และ**สลับเจ้าถัดไป
+อัตโนมัติ**เมื่อเจ้าแรกโควตาหมด/ล่ม — เว้นแต่ตั้ง ai.provider บังคับเจ้าที่ต้องการ
 
 หมายเหตุรุ่น: Gemini ฟรีมีแค่รุ่น flash (2.5-flash) — รุ่น Pro ต้องอัปเกรดเป็นแผนจ่ายเงิน
 ตั้งรุ่นเองได้ที่ env GEMINI_MODEL (เช่น gemini-2.5-pro ถ้ามีแผนจ่ายเงิน)
@@ -31,6 +33,8 @@ GEMINI_MODELS = [os.environ.get("GEMINI_MODEL")] if os.environ.get("GEMINI_MODEL
 GEMINI_MODELS += ["gemini-2.5-flash", "gemini-2.0-flash-lite",
                   "gemini-flash-latest", "gemini-2.5-flash-lite"]
 GEMINI_MODELS = [m for i, m in enumerate(GEMINI_MODELS) if m and m not in GEMINI_MODELS[:i]]
+# Groq ฟรี ~1,000 ครั้ง/วัน — 70B ฉลาดกว่าใช้ก่อน ถ้าโควตาหมดค่อยถอยไป 8B
+GROQ_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
 _cache = {}   # ticker -> (ts, analysis_text)
 AI_TTL = 3600  # วิเคราะห์ซ้ำตัวเดิมไม่เกินชั่วโมงละครั้ง — คุมค่าใช้จ่าย
 
@@ -73,25 +77,29 @@ def _ai_config():
         return {}
 
 
-def _provider():
-    """เลือกเจ้า AI จากคีย์ที่มี — คืน (provider, key) หรือ (None, None)"""
+def _provider_chain():
+    """ลำดับเจ้า AI ทุกตัวที่มีคีย์ — ตัวแรกคือหลัก ตัวถัดไปคือสำรองเมื่อโควตาหมด/ล่ม"""
     cfg = _ai_config()
-    gkey = (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-            or cfg.get("gemini_key"))
-    dkey = os.environ.get("DEEPSEEK_API_KEY") or cfg.get("deepseek_key")
-    ckey = (os.environ.get("ANTHROPIC_API_KEY") or cfg.get("anthropic_key")
-            or cfg.get("api_key"))  # api_key = ชื่อเดิม รองรับย้อนหลัง
+    keys = {
+        "gemini": (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+                   or cfg.get("gemini_key")),
+        "groq": os.environ.get("GROQ_API_KEY") or cfg.get("groq_key"),
+        "deepseek": os.environ.get("DEEPSEEK_API_KEY") or cfg.get("deepseek_key"),
+        "claude": (os.environ.get("ANTHROPIC_API_KEY") or cfg.get("anthropic_key")
+                   or cfg.get("api_key")),  # api_key = ชื่อเดิม รองรับย้อนหลัง
+    }
+    order = ["gemini", "groq", "deepseek", "claude"]  # ฟรี/ถูกก่อน แพงทีหลัง
     pref = (cfg.get("provider") or "").lower()
-    keys = {"gemini": gkey, "deepseek": dkey, "claude": ckey}
-    if pref in keys and keys[pref]:
-        return pref, keys[pref]
-    if gkey:                       # ค่าเริ่มต้น: Gemini ก่อน (ฟรี)
-        return "gemini", gkey
-    if dkey:
-        return "deepseek", dkey
-    if ckey:
-        return "claude", ckey
-    return None, None
+    if pref in order and keys.get(pref):
+        order.remove(pref)
+        order.insert(0, pref)
+    return [(p, keys[p]) for p in order if keys[p]]
+
+
+def _provider():
+    """เจ้า AI หลักตัวแรกที่มีคีย์ — คืน (provider, key) หรือ (None, None)"""
+    chain = _provider_chain()
+    return chain[0] if chain else (None, None)
 
 
 def ai_available():
@@ -144,10 +152,10 @@ def _compact_payload(r, smart=None, insider=None, news_items=None):
     return out
 
 
-_NO_KEY_MSG = ("ยังไม่ได้ตั้งค่าคีย์ AI — ใช้ฟรีได้ด้วย Google Gemini: "
-               "สมัครฟรีที่ aistudio.google.com/apikey แล้วตั้ง environment variable "
-               "GEMINI_API_KEY (หรือใส่ใน config.json ช่อง ai.gemini_key) จากนั้นรีสตาร์ทโปรแกรม "
-               "· ถ้าต้องการใช้ Claude แทน ให้ตั้ง ANTHROPIC_API_KEY")
+_NO_KEY_MSG = ("ยังไม่ได้ตั้งค่าคีย์ AI — ใช้ฟรีได้ 2 ทาง: Google Gemini "
+               "(aistudio.google.com/apikey → ตั้ง GEMINI_API_KEY) หรือ Groq ฟรี ~1,000 ครั้ง/วัน "
+               "(console.groq.com → ตั้ง GROQ_API_KEY) จากนั้นรีสตาร์ทโปรแกรม "
+               "· ทางเลือกจ่ายเงิน: DEEPSEEK_API_KEY หรือ ANTHROPIC_API_KEY")
 
 
 def _call_claude(key, system, user_msg):
@@ -237,6 +245,52 @@ def _call_gemini(key, system, user_msg):
     return {"ok": False, "error": last_err}
 
 
+def _call_groq(key, system, user_msg):
+    """เรียก Groq (ฟรี ~1,000 ครั้ง/วัน เร็วมาก) — API แบบ OpenAI-compatible วนลองหลายรุ่น"""
+    import requests
+    last_err = "ไม่มีรุ่น Groq ที่ใช้ได้"
+    for model in GROQ_MODELS:
+        try:
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"model": model, "max_tokens": 3500, "temperature": 0.6,
+                      "messages": [{"role": "system", "content": system},
+                                   {"role": "user", "content": user_msg}]},
+                timeout=120)
+        except requests.Timeout:
+            last_err = "Groq ตอบช้าเกินไป — ลองใหม่อีกครั้ง"
+            continue
+        except requests.ConnectionError:
+            return {"ok": False, "error": "เชื่อมต่อ Groq ไม่ได้ — ตรวจสอบอินเทอร์เน็ต"}
+        except Exception as e:
+            last_err = f"วิเคราะห์ไม่สำเร็จ: {str(e)[:100]}"
+            continue
+
+        if resp.status_code in (401, 403):
+            return {"ok": False, "no_key": True,
+                    "error": "Groq API key ไม่ถูกต้อง — ตรวจสอบที่ console.groq.com"}
+        # 429=โควตารุ่นนี้หมด, 404=ไม่มีรุ่นนี้, 503=แน่น → ลองรุ่นถัดไป
+        if resp.status_code in (429, 404, 503):
+            last_err = {429: "โควตาฟรี Groq เต็มชั่วคราว — รอสักครู่แล้วลองใหม่",
+                        404: "ไม่พบรุ่น Groq ที่รองรับ",
+                        503: "Groq แน่นชั่วคราว — ลองใหม่ภายหลัง"}[resp.status_code]
+            continue
+        if resp.status_code != 200:
+            return {"ok": False, "error": f"Groq ขัดข้อง (HTTP {resp.status_code})"}
+
+        try:
+            text = (resp.json()["choices"][0]["message"]["content"] or "").strip()
+        except Exception:
+            text = ""
+        if not text:
+            last_err = "Groq ส่งคำตอบว่าง"
+            continue
+        return {"ok": True, "analysis": text, "model": model + " (Groq ฟรี)"}
+
+    return {"ok": False, "error": last_err}
+
+
 def _call_deepseek(key, system, user_msg):
     """เรียก DeepSeek (จีน) ผ่าน API แบบ OpenAI-compatible — ถูกมากแต่ไม่ฟรี"""
     import requests
@@ -270,9 +324,10 @@ def _call_deepseek(key, system, user_msg):
 
 
 def analyze_with_ai(ticker, r, smart=None, insider=None, news_items=None, force=False):
-    """เรียก AI วิเคราะห์ (Gemini ฟรี / DeepSeek / Claude) — คืน dict {ok, analysis|error, cached, model}"""
-    provider, key = _provider()
-    if not provider:
+    """เรียก AI วิเคราะห์ (Gemini/Groq ฟรี → DeepSeek → Claude) — คืน dict {ok, analysis|error, cached, model}
+    ถ้าเจ้าแรกโควตาหมดหรือล่ม จะสลับไปเจ้าถัดไปที่มีคีย์ให้อัตโนมัติ"""
+    chain = _provider_chain()
+    if not chain:
         return {"ok": False, "no_key": True, "error": _NO_KEY_MSG}
 
     now = time.time()
@@ -286,12 +341,21 @@ def analyze_with_ai(ticker, r, smart=None, insider=None, news_items=None, force=
     user_msg = (f"วิเคราะห์หุ้น {ticker} จากข้อมูล ณ {th_time} (เวลาไทย) ต่อไปนี้:\n\n"
                 + json.dumps(payload, ensure_ascii=False, default=str))
 
-    caller = {"gemini": _call_gemini, "deepseek": _call_deepseek, "claude": _call_claude}[provider]
-    result = caller(key, SYSTEM_PROMPT, user_msg)
+    callers = {"gemini": _call_gemini, "groq": _call_groq,
+               "deepseek": _call_deepseek, "claude": _call_claude}
+    result = None
+    for provider, key in chain:
+        result = callers[provider](key, SYSTEM_PROMPT, user_msg)
+        if result.get("ok"):
+            break
+        # เจ้านี้ใช้ไม่ได้ (โควตาหมด/คีย์เสีย/ล่ม) → ลองเจ้าถัดไปในลำดับ
     if result.get("ok"):
         _cache[ticker] = (now, (result["analysis"], result["model"]))
         if len(_cache) > 60:
             for k in sorted(_cache, key=lambda k: _cache[k][0])[:30]:
                 _cache.pop(k, None)
         result["cached"] = False
+    elif len(chain) > 1:
+        # มีคีย์อยู่แล้วแต่ใช้ไม่ได้ทุกเจ้า — อย่าโชว์หน้า "ยังไม่ตั้งคีย์"
+        result.pop("no_key", None)
     return result
