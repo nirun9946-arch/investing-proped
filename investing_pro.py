@@ -286,6 +286,7 @@ def fundamentals(tk, price):
            "target": None, "upside": None, "w52h": None, "w52l": None,
            "market_state": None, "value_label": "N/A",
            "value_desc": "ไม่มีข้อมูลพื้นฐาน",
+           "sector": None, "industry": None, "company": None,
            "pre_price": None, "pre_chg": None, "post_price": None, "post_chg": None}
     try:
         info = tk.info or {}
@@ -332,6 +333,12 @@ def fundamentals(tk, price):
     out["w52h"] = info.get("fiftyTwoWeekHigh")
     out["w52l"] = info.get("fiftyTwoWeekLow")
     out["market_state"] = info.get("marketState")
+    # กลุ่มธุรกิจ — ใช้เลือกลายกราฟฟิกประจำการ์ดบนหน้าเว็บ
+    out["sector"] = info.get("sector")
+    out["industry"] = info.get("industry")
+    out["company"] = info.get("shortName") or info.get("longName")
+    if info.get("quoteType") == "ETF" and not out["sector"]:
+        out["sector"] = "ETF"
     if out["target"]:
         out["upside"] = (out["target"] / price - 1) * 100
 

@@ -193,6 +193,15 @@
   .pred-flex{display:flex;align-items:center;gap:14px}
   .pdonut{width:64px;height:64px;flex:none;filter:drop-shadow(0 0 6px rgba(52,211,153,.25))}
   .pd-txt{font-size:.95rem;font-weight:800;fill:var(--text)}
+  /* ===== ลายกราฟฟิกประจำกลุ่มธุรกิจบนการ์ด ===== */
+  .card{overflow:hidden}
+  .sec-art{position:absolute;top:-14px;right:-12px;width:132px;height:132px;
+    pointer-events:none;opacity:.13;z-index:0;transition:opacity .3s ease,transform .45s var(--ease-spring)}
+  .card:hover .sec-art{opacity:.22;transform:scale(1.08) rotate(-4deg)}
+  .card > *:not(.sec-art){position:relative;z-index:1}
+  .sec-tag{display:inline-flex;align-items:center;gap:5px;font-size:.7rem;font-weight:700;
+    padding:3px 9px;border-radius:9px;margin-top:6px;border:1px solid;letter-spacing:.2px}
+  .sec-tag svg{width:12px;height:12px;flex:none}
   /* ===== ลูกแสงประดับพื้นหลัง ===== */
   body::before{content:'';position:fixed;top:18%;left:-12%;width:520px;height:520px;border-radius:50%;
     background:radial-gradient(circle,rgba(115,66,226,.14),transparent 70%);
@@ -1101,6 +1110,38 @@ function glossify(txt){
 }
 
 // ===== Sparkline 30 วัน: SVG ล้วน ไม่ใช้ไลบรารี =====
+// ===== ลายกราฟฟิกประจำกลุ่มธุรกิจ =====
+// แต่ละ sector มี: ชื่อไทย · สี · ไอคอนเล็ก (ป้าย) · ลายใหญ่ (ลายน้ำมุมการ์ด)
+// path ทั้งหมดวาดบน viewBox 24x24 สไตล์เส้น (stroke) ให้เข้ากับธีม
+const SECTORS = {
+  'Technology':            {th:'เทคโนโลยี',      c:'#7342E2', d:'M9 3h6v3h3v6h3v6h-6v-3H9v3H3v-6h3V6h3zM9 9h6v6H9z'},
+  'Communication Services':{th:'สื่อสาร',        c:'#60a5fa', d:'M12 3v18M5 8a10 10 0 0 1 14 0M8 12a6 6 0 0 1 8 0M12 16a2 2 0 0 1 0 0'},
+  'Financial Services':    {th:'การเงิน',        c:'#34d399', d:'M3 21h18M5 21V9l7-5 7 5v12M9 21v-7h6v7'},
+  'Healthcare':            {th:'สุขภาพ',         c:'#f472b6', d:'M12 5v14M5 12h14'},
+  'Energy':                {th:'พลังงาน',        c:'#fbbf24', d:'M13 2 4 14h6l-1 8 9-12h-6z'},
+  'Consumer Cyclical':     {th:'สินค้าฟุ่มเฟือย', c:'#fb923c', d:'M3 6h18l-2 12H5zM8 6a4 4 0 0 1 8 0'},
+  'Consumer Defensive':    {th:'สินค้าจำเป็น',   c:'#a3e635', d:'M4 8h16l-1 12H5zM9 8V5a3 3 0 0 1 6 0v3'},
+  'Industrials':           {th:'อุตสาหกรรม',     c:'#94a3b8', d:'M3 21V10l6 4V10l6 4V6l6 4v11z'},
+  'Basic Materials':       {th:'วัตถุดิบ',        c:'#c084fc', d:'M12 2 3 8v8l9 6 9-6V8zM12 2v20M3 8l9 6 9-6'},
+  'Real Estate':           {th:'อสังหาฯ',        c:'#22d3ee', d:'M3 11 12 4l9 7v10H3zM9 21v-6h6v6'},
+  'Utilities':             {th:'สาธารณูปโภค',    c:'#38bdf8', d:'M12 2v8M8 6l4-4 4 4M5 22V10h14v12z'},
+  'ETF':                   {th:'กองทุน ETF',     c:'#818cf8', d:'M3 12a9 9 0 1 0 18 0 9 9 0 1 0-18 0M12 3v9l6 4'},
+};
+const SEC_FALLBACK = {th:'อื่นๆ', c:'#94a3b8', d:'M4 20V8l8-5 8 5v12z'};
+
+function secArt(r){
+  const s = SECTORS[r.sector] || (r.sector ? SEC_FALLBACK : null);
+  if(!s) return {art:'', tag:''};
+  const stroke = `stroke="${s.c}" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"`;
+  const art = `<svg class="sec-art" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="${s.d}" ${stroke.replace('1.6','1.1')}/></svg>`;
+  const title = r.industry ? ` title="${escHtml(r.industry)}"` : '';
+  const tag = `<div><span class="sec-tag"${title}
+      style="color:${s.c};border-color:${s.c}55;background:${s.c}14">
+      <svg viewBox="0 0 24 24"><path d="${s.d}" ${stroke}/></svg>${escHtml(s.th)}</span></div>`;
+  return {art, tag};
+}
+
 function sparkSvg(r){
   const sp = r.spark;
   if(!Array.isArray(sp) || sp.length < 2 || sp.some(v => typeof v !== 'number' || !isFinite(v))) return '';
@@ -1300,9 +1341,12 @@ function card(r){
   // กลาง=ระดับราคาสำคัญ+ความคุ้มค่า · ลึก=รายละเอียดเทคนิค (พับเก็บ จำสถานะต่อการ์ด)
   let deepOpen = false;
   try{ deepOpen = !!JSON.parse(localStorage.getItem('deepOpen')||'{}')[r.ticker]; }catch(e){}
+  const sa = secArt(r);
   return `<div class="card">
+    ${sa.art}
     <button class="del" title="ลบออกจาก watchlist" onclick="removeTicker('${r.ticker}')">✕</button>
     <div class="tk">${r.ticker}${mktTag}</div>
+    ${sa.tag}
     <div class="price" id="live-${r.ticker}">${fmt(mainPrice)}<span class="chg ${up?'up':'down'}">${up?'+':''}${fmt(mainChg)}%</span></div>
     ${isDelayed?'<div class="ext" style="color:var(--muted)">⏱ หุ้นไทย: ราคาดีเลย์ ~15 นาที (ตามตลาด SET)</div>':''}
     ${extLines}
