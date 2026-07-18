@@ -87,8 +87,9 @@
     backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
     border:1px solid rgba(255,255,255,.08);border-radius:var(--r-card);padding:18px;position:relative;
     animation:fadeIn .3s ease;box-shadow:var(--shadow-card);
-    transition:border-color .25s ease,box-shadow .25s ease}
-  .card:hover{border-color:rgba(255,255,255,.15);box-shadow:0 18px 40px -12px rgba(0,0,0,.62)}
+    transition:border-color .25s ease,box-shadow .25s ease,transform .25s var(--ease-spring)}
+  .card:hover{border-color:rgba(115,66,226,.4);transform:translateY(-3px);
+    box-shadow:0 22px 44px -12px rgba(0,0,0,.66),0 0 24px rgba(115,66,226,.12)}
   @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1}}
   .card .del{position:absolute;top:10px;right:12px;background:none;color:var(--muted);font-size:1rem;padding:4px 8px}
   .card .del:hover{color:var(--red)}
@@ -134,6 +135,26 @@
   .meter i{position:absolute;top:0;bottom:0;border-radius:4px}
   .stats{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin:10px 0;font-size:.88rem}
   .stats b{color:var(--text)} .stats span{color:var(--muted)}
+  /* ===== ระดับราคาสำคัญ (ชั้นกลาง): แนวรับ/แนวต้าน/ตัดขาดทุน/เป้าหมาย ===== */
+  .levels{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+  .lv{background:var(--card2);border:1px solid var(--border);border-radius:12px;
+    padding:8px 11px;line-height:1.4;transition:border-color .2s ease}
+  .lv span{display:block;font-size:.72rem;color:var(--muted);font-weight:600}
+  .lv b{font-size:1.02rem;font-variant-numeric:tabular-nums}
+  .lv-sup b{color:var(--green)} .lv-res b{color:var(--red)}
+  .lv-stop{border-color:rgba(251,191,36,.3)} .lv-stop b{color:var(--yellow)}
+  .lv-tgt{border-color:rgba(115,66,226,.42);background:var(--purple-bg)} .lv-tgt b{color:var(--purple-hi)}
+  /* ===== ส่วนพับเก็บ "ข้อมูลเชิงลึก" ===== */
+  .deep-btn{width:100%;margin-top:12px;padding:10px 14px;border-radius:var(--r-block);
+    background:none;border:1px dashed rgba(255,255,255,.18);color:var(--muted);
+    font-weight:700;font-size:.85rem;display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .deep-btn:hover{border-color:var(--purple-hi);color:var(--purple-hi)}
+  .deep-btn .chev{transition:transform .35s var(--ease-spring);flex:none}
+  .deep-btn.on{border-style:solid;border-color:rgba(115,66,226,.4);color:var(--purple-hi)}
+  .deep-btn.on .chev{transform:rotate(180deg)}
+  .deep{display:grid;grid-template-rows:0fr;transition:grid-template-rows .5s var(--ease-spring)}
+  .deep-in{overflow:hidden;min-height:0}
+  .deep.open{grid-template-rows:1fr}
   .sigs{margin-top:10px;border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:5px}
   .sig{font-size:.84rem;display:flex;gap:7px;align-items:flex-start;line-height:1.45}
   .sig .ic{flex:none;font-weight:700}
@@ -385,11 +406,12 @@
   .ins-pos{color:var(--muted);font-size:.83rem}
   .ins-num{text-align:right;font-size:.86rem;color:var(--muted)}
   .ins-num b{color:var(--text);font-size:.95rem}
-  .ai-btn{width:100%;margin-top:10px;padding:10px 14px;border-radius:var(--r-block);
-    background:linear-gradient(135deg,rgba(168,85,247,.18),rgba(59,130,246,.15));
-    border:1px solid rgba(168,85,247,.45);color:#d8b4fe;font-weight:700;font-size:.88rem;
-    transition:.2s}
-  .ai-btn:hover{background:linear-gradient(135deg,rgba(168,85,247,.3),rgba(59,130,246,.25))}
+  .ai-btn{width:100%;margin-top:12px;padding:11px 16px;border-radius:50px;
+    background:linear-gradient(135deg,rgba(115,66,226,.24),rgba(115,66,226,.1));
+    border:1px solid rgba(115,66,226,.5);color:#c4b5fd;font-weight:700;font-size:.88rem;
+    transition:background .2s ease,box-shadow .2s ease,transform .2s var(--ease-spring)}
+  .ai-btn:hover{background:linear-gradient(135deg,rgba(115,66,226,.38),rgba(115,66,226,.18));
+    box-shadow:0 4px 18px rgba(115,66,226,.28);transform:translateY(-1px)}
   .ai-btn:disabled{opacity:.55;cursor:wait}
   .ai-box{margin-top:10px;padding:14px 16px;border-radius:var(--r-block);
     background:linear-gradient(135deg,rgba(88,28,135,.25),rgba(15,23,42,.5));
@@ -1218,6 +1240,10 @@ function card(r){
     ? ''
     : `<span class="conf">${gl('score')} ${score>0?'+':''}${score} · มั่นใจ ${Math.round(r.confidence)}%</span>`;
 
+  // การ์ด 3 ชั้น: บน=ตัดสินใจเร็ว (ราคา/verdict/กลับตัว/ควรซื้อไหม)
+  // กลาง=ระดับราคาสำคัญ+ความคุ้มค่า · ลึก=รายละเอียดเทคนิค (พับเก็บ จำสถานะต่อการ์ด)
+  let deepOpen = false;
+  try{ deepOpen = !!JSON.parse(localStorage.getItem('deepOpen')||'{}')[r.ticker]; }catch(e){}
   return `<div class="card">
     <button class="del" title="ลบออกจาก watchlist" onclick="removeTicker('${r.ticker}')">✕</button>
     <div class="tk">${r.ticker}${mktTag}</div>
@@ -1229,26 +1255,47 @@ function card(r){
     ${confLine}
     <div class="meter"><i style="${barStyle}"></i></div>
     ${revBlock}
-    <div class="stats">
-      <div><span>ปิดก่อนหน้า:</span> <b>${fmt(r.prev_close)}</b></div>
-      <div><span>${gl('กรอบ 52 สัปดาห์')}:</span> <b>${fmt(r.w52l)} – ${fmt(r.w52h)}</b></div>
-      <div><span>${gl('RSI','RSI(14)')}:</span> <b>${fmt(r.rsi,1)}</b> ${rsiTag}</div>
-      <div><span>${gl('วอลุ่ม')}:</span> <b>${fmt(r.vol_ratio)}x</b></div>
-      <div><span>${gl('แนวรับ')}:</span> <b class="up">${fmt(r.support)}</b></div>
-      <div><span>${gl('แนวต้าน')}:</span> <b class="down">${fmt(r.resistance)}</b></div>
-      <div><span>${gl('ตัดขาดทุน')}:</span> <b>${fmt(r.stop_suggest)}</b></div>
-      <div><span>${gl('เป้าหมาย')}:</span> <b>${fmt(r.target_suggest)}</b></div>
+    <div class="levels">
+      <div class="lv lv-sup"><span>${gl('แนวรับ')}</span><b>${fmt(r.support)}</b></div>
+      <div class="lv lv-res"><span>${gl('แนวต้าน')}</span><b>${fmt(r.resistance)}</b></div>
+      <div class="lv lv-stop"><span>${gl('ตัดขาดทุน')}</span><b>${fmt(r.stop_suggest)}</b></div>
+      <div class="lv lv-tgt"><span>${gl('เป้าหมาย')}</span><b>${fmt(r.target_suggest)}</b></div>
     </div>
     ${valBlock}
-    ${allocBlock(r)}
-    ${vpBlock}
-    ${predBlock}
     ${adviceBlock}
-    <div id="sm-${r.ticker}">${smartBlock(r.ticker)}</div>
+    ${allocBlock(r)}
     <button class="ai-btn" id="aib-${r.ticker}" onclick="aiAnalyze('${r.ticker}')">🤖 AI วิเคราะห์เจาะลึก (ฟรี)</button>
     <div id="ai-${r.ticker}" style="display:none"></div>
-    <div class="sigs">${sigs}</div>
+    <button class="deep-btn${deepOpen?' on':''}" id="deepb-${r.ticker}" onclick="toggleDeep('${r.ticker}')">
+      <span>🔎 ข้อมูลเชิงลึก — RSI · วอลุ่ม · Volume Profile · สัญญาณทั้งหมด</span><span class="chev">▼</span>
+    </button>
+    <div class="deep${deepOpen?' open':''}" id="deep-${r.ticker}"><div class="deep-in">
+      <div class="stats">
+        <div><span>ปิดก่อนหน้า:</span> <b>${fmt(r.prev_close)}</b></div>
+        <div><span>${gl('กรอบ 52 สัปดาห์')}:</span> <b>${fmt(r.w52l)} – ${fmt(r.w52h)}</b></div>
+        <div><span>${gl('RSI','RSI(14)')}:</span> <b>${fmt(r.rsi,1)}</b> ${rsiTag}</div>
+        <div><span>${gl('วอลุ่ม')}:</span> <b>${fmt(r.vol_ratio)}x</b></div>
+      </div>
+      ${vpBlock}
+      ${predBlock}
+      <div id="sm-${r.ticker}">${smartBlock(r.ticker)}</div>
+      <div class="sigs">${sigs}</div>
+    </div></div>
   </div>`;
+}
+
+// พับ/กางส่วนข้อมูลเชิงลึกของการ์ด — จำสถานะต่อหุ้นไว้ใน localStorage
+function toggleDeep(t){
+  const box = document.getElementById('deep-' + t);
+  const btn = document.getElementById('deepb-' + t);
+  if(!box || !btn) return;
+  const open = box.classList.toggle('open');
+  btn.classList.toggle('on', open);
+  try{
+    const m = JSON.parse(localStorage.getItem('deepOpen')||'{}');
+    if(open) m[t] = 1; else delete m[t];
+    localStorage.setItem('deepOpen', JSON.stringify(m));
+  }catch(e){}
 }
 
 // ===== แถบตลาดโลก: ทองคำ / น้ำมัน / บิตคอยน์ / ดอลลาร์ (เรียลไทม์) =====
