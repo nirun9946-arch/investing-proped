@@ -1,4 +1,4 @@
-Add-Type -AssemblyName Microsoft.VisualBasic
+﻿Add-Type -AssemblyName Microsoft.VisualBasic
 Add-Type -AssemblyName System.Windows.Forms
 
 $key = [Microsoft.VisualBasic.Interaction]::InputBox(
