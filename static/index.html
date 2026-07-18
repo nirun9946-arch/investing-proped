@@ -166,6 +166,40 @@
   .rsi-tag{padding:2px 8px;border-radius:8px;font-weight:700;font-size:.78rem}
   .rsi-ob{background:var(--red-bg);color:var(--red)}
   .rsi-os{background:var(--green-bg);color:var(--green)}
+  /* ===== แถบตำแหน่งราคาในกรอบ 52 สัปดาห์ ===== */
+  .rng{margin-top:12px}
+  .rng-lbl{display:flex;justify-content:space-between;font-size:.75rem;color:var(--muted);
+    font-weight:600;margin-bottom:5px}
+  .rng-lbl b{color:var(--purple-hi)}
+  .rng-bar{position:relative;height:8px;border-radius:4px;overflow:visible;
+    background:linear-gradient(90deg,rgba(52,211,153,.45),rgba(148,163,184,.25) 45%,rgba(248,113,113,.45))}
+  .rng-bar i{position:absolute;top:50%;transform:translate(-50%,-50%);width:14px;height:14px;
+    border-radius:50%;background:#fff;border:3px solid var(--purple-hi);
+    box-shadow:0 0 10px rgba(115,66,226,.65)}
+  .rng-cap{display:flex;justify-content:space-between;font-size:.72rem;color:var(--muted);
+    margin-top:4px;font-variant-numeric:tabular-nums}
+  /* ===== เกจ RSI แบบโซนสี ===== */
+  .rsix{margin-top:12px}
+  .rsix-lbl{display:flex;justify-content:space-between;font-size:.78rem;color:var(--muted);
+    font-weight:600;margin-bottom:5px}
+  .rsix-lbl b{color:var(--text);font-variant-numeric:tabular-nums}
+  .rsix-bar{position:relative;height:8px;border-radius:4px;overflow:visible;
+    background:linear-gradient(90deg,var(--green) 0 30%,rgba(148,163,184,.3) 30% 70%,var(--red) 70% 100%);
+    opacity:.9}
+  .rsix-bar i{position:absolute;top:50%;transform:translate(-50%,-50%);width:12px;height:12px;
+    border-radius:50%;background:#fff;border:3px solid var(--blue);box-shadow:0 0 8px rgba(96,165,250,.6)}
+  .rsix-zone{display:flex;justify-content:space-between;font-size:.68rem;color:var(--muted);margin-top:4px}
+  /* ===== โดนัทความน่าจะเป็น 5 วัน ===== */
+  .pred-flex{display:flex;align-items:center;gap:14px}
+  .pdonut{width:64px;height:64px;flex:none;filter:drop-shadow(0 0 6px rgba(52,211,153,.25))}
+  .pd-txt{font-size:.95rem;font-weight:800;fill:var(--text)}
+  /* ===== ลูกแสงประดับพื้นหลัง ===== */
+  body::before{content:'';position:fixed;top:18%;left:-12%;width:520px;height:520px;border-radius:50%;
+    background:radial-gradient(circle,rgba(115,66,226,.14),transparent 70%);
+    filter:blur(48px);pointer-events:none;z-index:0}
+  body::after{content:'';position:fixed;bottom:-8%;right:-10%;width:460px;height:460px;border-radius:50%;
+    background:radial-gradient(circle,rgba(52,211,153,.09),transparent 70%);
+    filter:blur(48px);pointer-events:none;z-index:0}
   .mkt{font-size:.78rem;padding:3px 10px;border-radius:12px;margin-left:10px;vertical-align:middle;
     border:1px solid var(--border);color:var(--muted);font-weight:600}
   .mkt.open{color:var(--green);border-color:var(--green);background:var(--green-bg)}
@@ -1087,6 +1121,8 @@ function sparkSvg(r){
     <path d="${line} L${W} ${H} L0 ${H} Z" fill="url(#${gid})"/>
     <path d="${line}" fill="none" style="stroke:${col}" stroke-width="1.8"
       stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+    <circle cx="${pts[n-1][0].toFixed(1)}" cy="${pts[n-1][1].toFixed(1)}" r="2.4"
+      style="fill:${col};filter:drop-shadow(0 0 3px ${col})"/>
   </svg>
   <div class="spark-cap"><span>แนวโน้ม 30 วันล่าสุด</span>
     <b class="${up?'up':'down'}">${up?'▲ +':'▼ '}${fmt(chg,1)}%</b></div>`;
@@ -1209,14 +1245,23 @@ function card(r){
     </div>`;
   }
 
-  // Predictive Analytics: ความน่าจะเป็น 5 วันข้างหน้าจากเหตุการณ์คล้ายกันในอดีต
+  // Predictive Analytics: โดนัทความน่าจะเป็น 5 วันข้างหน้าจากเหตุการณ์คล้ายกันในอดีต
   let predBlock = '';
   if(r.prediction){
     const pu = Math.round(r.prediction.prob_up*100);
-    predBlock = `<div class="predict">
-      <div class="plabel"><span>🔮 โอกาสราคา<b class="up">ขึ้น</b>ใน 5 วัน (สถิติจากเหตุการณ์คล้ายกัน ${r.prediction.n} ครั้ง)</span><b>${pu}%</b></div>
-      <div class="pmeter"><i style="width:${pu}%"></i></div>
-    </div>`;
+    const R = 26, C = 2*Math.PI*R;
+    const pcol = pu >= 55 ? 'var(--green)' : pu <= 45 ? 'var(--red)' : 'var(--yellow)';
+    predBlock = `<div class="predict"><div class="pred-flex">
+      <svg class="pdonut" viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r="${R}" fill="none" stroke="rgba(148,163,184,.18)" stroke-width="7"/>
+        <circle cx="32" cy="32" r="${R}" fill="none" stroke="${pcol}" stroke-width="7"
+          stroke-dasharray="${(C*pu/100).toFixed(1)} ${C.toFixed(1)}" stroke-linecap="round"
+          transform="rotate(-90 32 32)"/>
+        <text x="32" y="37" text-anchor="middle" class="pd-txt">${pu}%</text>
+      </svg>
+      <div class="plabel"><span>🔮 โอกาสราคา<b class="up">ขึ้น</b>ใน 5 วัน<br>
+        <span class="conf" style="margin-left:0">สถิติจากเหตุการณ์คล้ายกันในอดีต ${r.prediction.n} ครั้ง — ไม่ใช่คำทำนาย</span></span></div>
+    </div></div>`;
   }
 
   // กล่องสัญญาณกลับตัวหลังลงหลายวัน — โชว์เมื่อเข้าเงื่อนไขตั้งแต่ 2/7 ข้อขึ้นไป
@@ -1240,6 +1285,17 @@ function card(r){
     ? ''
     : `<span class="conf">${gl('score')} ${score>0?'+':''}${score} · มั่นใจ ${Math.round(r.confidence)}%</span>`;
 
+  // แถบกราฟฟิกตำแหน่งราคาปัจจุบันในกรอบ 52 สัปดาห์ (ซ้าย=ใกล้ low, ขวา=ใกล้ high)
+  let rangeBar = '';
+  if(r.w52l != null && r.w52h != null && r.w52h > r.w52l){
+    const pos = Math.min(100, Math.max(0, (mainPrice - r.w52l)/(r.w52h - r.w52l)*100));
+    rangeBar = `<div class="rng">
+      <div class="rng-lbl"><span>📍 ตำแหน่งใน${gl('กรอบ 52 สัปดาห์')}</span><b>${pos.toFixed(0)}%</b></div>
+      <div class="rng-bar"><i style="left:${pos.toFixed(1)}%"></i></div>
+      <div class="rng-cap"><span>ต่ำสุด ${fmt(r.w52l)}</span><span>สูงสุด ${fmt(r.w52h)}</span></div>
+    </div>`;
+  }
+
   // การ์ด 3 ชั้น: บน=ตัดสินใจเร็ว (ราคา/verdict/กลับตัว/ควรซื้อไหม)
   // กลาง=ระดับราคาสำคัญ+ความคุ้มค่า · ลึก=รายละเอียดเทคนิค (พับเก็บ จำสถานะต่อการ์ด)
   let deepOpen = false;
@@ -1261,6 +1317,7 @@ function card(r){
       <div class="lv lv-stop"><span>${gl('ตัดขาดทุน')}</span><b>${fmt(r.stop_suggest)}</b></div>
       <div class="lv lv-tgt"><span>${gl('เป้าหมาย')}</span><b>${fmt(r.target_suggest)}</b></div>
     </div>
+    ${rangeBar}
     ${valBlock}
     ${adviceBlock}
     ${allocBlock(r)}
@@ -1272,9 +1329,12 @@ function card(r){
     <div class="deep${deepOpen?' open':''}" id="deep-${r.ticker}"><div class="deep-in">
       <div class="stats">
         <div><span>ปิดก่อนหน้า:</span> <b>${fmt(r.prev_close)}</b></div>
-        <div><span>${gl('กรอบ 52 สัปดาห์')}:</span> <b>${fmt(r.w52l)} – ${fmt(r.w52h)}</b></div>
-        <div><span>${gl('RSI','RSI(14)')}:</span> <b>${fmt(r.rsi,1)}</b> ${rsiTag}</div>
         <div><span>${gl('วอลุ่ม')}:</span> <b>${fmt(r.vol_ratio)}x</b></div>
+      </div>
+      <div class="rsix">
+        <div class="rsix-lbl"><span>${gl('RSI','RSI(14)')} ${rsiTag}</span><b>${fmt(r.rsi,1)}</b></div>
+        <div class="rsix-bar"><i style="left:${Math.min(100,Math.max(0,r.rsi||50)).toFixed(1)}%"></i></div>
+        <div class="rsix-zone"><span>◀ Oversold 30</span><span>โซนกลาง</span><span>Overbought 70 ▶</span></div>
       </div>
       ${vpBlock}
       ${predBlock}
