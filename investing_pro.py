@@ -416,6 +416,81 @@ def live_quotes(tickers):
     return [_quote_cache[t][1] for t in tickers if t in _quote_cache]
 
 
+def detect_reversal(df):
+    """สัญญาณกลับตัวหลังลงติดต่อกันหลายวัน (bottom reversal)
+
+    ขั้นแรกต้องมี "การลงจริง" ก่อน: ลงอย่างน้อย 4 ใน 6 แท่งก่อนหน้า
+    หรือราคาร่วง >=5% จาก high 10 วัน — จากนั้นนับสัญญาณกลับตัว 7 ข้อ
+    (แท่งค้อน, engulfing, RSI เงยจาก oversold, bullish divergence,
+     MACD histogram ยกตัว, วอลุ่มเข้าแท่งเขียว, ปิดเหนือ high เมื่อวาน)
+    ยิ่งเข้าหลายข้อยิ่งน่าเชื่อ — คืน None ถ้าไม่เข้าเงื่อนไขตั้งต้นหรือได้ต่ำกว่า 2 ข้อ
+    """
+    if len(df) < 30:
+        return None
+    last, prev = df.iloc[-1], df.iloc[-2]
+
+    # --- เงื่อนไขตั้งต้น: ต้องลงมาหลายวันจริงก่อน (ไม่นับแท่งวันนี้ที่อาจเป็นวันกลับตัว) ---
+    diffs = df["Close"].diff().iloc[-7:-1]           # 6 แท่งก่อนหน้า
+    down_days = int((diffs < 0).sum())
+    high10 = float(df["High"].iloc[-11:-1].max())
+    drop_pct = (high10 - float(prev["Close"])) / high10 * 100 if high10 else 0.0
+    if down_days < 4 and drop_pct < 5:
+        return None
+
+    sigs = []
+    o, c = float(last["Open"]), float(last["Close"])
+    h, l = float(last["High"]), float(last["Low"])
+    body, rng = abs(c - o), h - l
+
+    # 1) แท่งค้อน — ไส้ล่างยาว = แรงขายระหว่างวันโดนซื้อกลับหมด
+    lower_wick = min(o, c) - l
+    upper_wick = h - max(o, c)
+    if rng > 0 and body > 0 and lower_wick >= 2 * body and upper_wick <= body:
+        sigs.append("แท่งค้อน (Hammer): ไส้ล่างยาว แรงขายถูกซื้อคืน — แท่งกลับตัวคลาสสิก")
+
+    # 2) แท่งเขียวกลืนแท่งแดงเมื่อวาน
+    po, pc = float(prev["Open"]), float(prev["Close"])
+    if c > o and pc < po and c >= po and o <= pc:
+        sigs.append("แท่งเขียวกลืนแท่งแดง (Bullish Engulfing): แรงซื้อกลับมาคุมเกม")
+
+    # 3) RSI เงยหัวขึ้นจากเขต oversold
+    rsi_recent = df["RSI"].iloc[-6:]
+    rsi_now, rsi_prev = float(last["RSI"]), float(prev["RSI"])
+    if float(rsi_recent.min()) <= 35 and rsi_now > rsi_prev:
+        sigs.append(f"RSI เงยหัวขึ้นจากเขต oversold (ต่ำสุด {rsi_recent.min():.0f} → ตอนนี้ {rsi_now:.0f})")
+
+    # 4) Bullish Divergence — ราคาทำ low ใหม่ แต่ RSI ไม่ลงตาม = แรงขายเริ่มหมด
+    lows, rsis = df["Low"], df["RSI"]
+    recent_i = lows.iloc[-5:].idxmin()
+    prior_i = lows.iloc[-20:-5].idxmin()
+    if (float(lows[recent_i]) < float(lows[prior_i])
+            and float(rsis[recent_i]) > float(rsis[prior_i]) + 2):
+        sigs.append("Bullish Divergence: ราคาทำจุดต่ำใหม่แต่ RSI ยกตัวสวนทาง — แรงขายอ่อนกำลัง")
+
+    # 5) MACD histogram ยกตัว 2 วันติด — โมเมนตัมลบเริ่มอ่อน
+    hist = df["MACD_HIST"].iloc[-3:]
+    if float(hist.iloc[2]) > float(hist.iloc[1]) > float(hist.iloc[0]):
+        sigs.append("MACD histogram ยกตัว 2 วันติด — โมเมนตัมฝั่งลบอ่อนแรงลง")
+
+    # 6) วอลุ่มเข้าแท่งเขียว — การเด้งต้องมีแรงซื้อจริงถึงน่าเชื่อ
+    vol_avg = float(last["VOL_AVG20"]) if last["VOL_AVG20"] == last["VOL_AVG20"] else 0.0
+    if c > o and vol_avg > 0 and float(last["Volume"]) >= 1.5 * vol_avg:
+        sigs.append(f"วอลุ่มเข้าแท่งเขียว {float(last['Volume'])/vol_avg:.1f} เท่าของค่าเฉลี่ย — มีแรงซื้อจริง")
+
+    # 7) ปิดเหนือ high เมื่อวาน — ความแข็งแรงวันแรกหลังลงต่อเนื่อง
+    if c > float(prev["High"]):
+        sigs.append("ปิดเหนือ high เมื่อวาน — วันแรกที่ฝั่งซื้อชนะเต็มแท่งหลังลงมาหลายวัน")
+
+    n = len(sigs)
+    if n < 2:
+        return None
+    label = ("สัญญาณกลับตัวชัดเจน" if n >= 4
+             else "เริ่มมีสัญญาณกลับตัว" if n == 3
+             else "สัญญาณกลับตัวอ่อนๆ กำลังก่อตัว")
+    return {"down_days": down_days, "drop_pct": round(drop_pct, 1),
+            "score": n, "max": 7, "signals": sigs, "label": label}
+
+
 def analyze(ticker, cfg):
     s = cfg["settings"]
     tk, df = fetch(ticker, s.get("period", "1y"), s.get("interval", "1d"))
@@ -525,6 +600,14 @@ def analyze(ticker, cfg):
 
     prediction = predict_5d(df, price)
 
+    # --- สัญญาณกลับตัวหลังลงหลายวัน ---
+    reversal = detect_reversal(df)
+    if reversal and reversal["score"] >= 3:
+        add("Reversal Setup", "bull", 2,
+            f"🔄 {reversal['label']} — ลงมา {reversal['down_days']}/6 วัน "
+            f"(-{reversal['drop_pct']}% จาก high 10 วัน) เข้าเงื่อนไขกลับตัว {reversal['score']}/7 ข้อ")
+        events.append("reversal")
+
     # --- Verdict ---
     if score >= 6:
         verdict = "STRONG BUY SIGNAL"
@@ -566,6 +649,7 @@ def analyze(ticker, cfg):
         "asof": str(df.index[-1].date()),
         "vp": vp,
         "prediction": prediction,
+        "reversal": reversal,
         # กราฟจิ๋ว 30 วันสำหรับ sparkline บนการ์ด
         "spark": [round(float(x), 4) for x in df["Close"].tail(30)],
     }

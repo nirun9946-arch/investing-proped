@@ -139,6 +139,14 @@ def _compact_payload(r, smart=None, insider=None, news_items=None):
         "สถิติ5วัน": ({"โอกาสขึ้น_pct": round(pred["prob_up"] * 100),
                        "จากเหตุการณ์คล้ายกัน_ครั้ง": pred["n"]} if pred else None),
     }
+    rev = r.get("reversal")
+    if rev:
+        out["สัญญาณกลับตัวหลังลงหลายวัน"] = {
+            "สรุป": rev.get("label"),
+            "เข้าเงื่อนไข": f"{rev.get('score')}/{rev.get('max')}",
+            "ลงมากี่วัน": f"{rev.get('down_days')}/6",
+            "รายละเอียด": rev.get("signals"),
+        }
     if smart:
         out["สัญญาณเงินใหญ่"] = [a.get("text") for a in (smart.get("alerts") or [])]
     if insider:

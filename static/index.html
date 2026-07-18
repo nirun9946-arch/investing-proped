@@ -91,6 +91,11 @@
   .v-sell{background:var(--red-bg);color:var(--red);border:1px solid var(--red)}
   .v-hold{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow)}
   .conf{font-size:.78rem;color:var(--muted);margin-left:8px}
+  .rev-box{margin-top:10px;padding:10px 12px;border-radius:var(--r-block);
+    background:var(--green-bg);border:1px solid rgba(52,211,153,.35);font-size:.83rem;line-height:1.5}
+  .rev-box.strong{border-color:rgba(52,211,153,.65);box-shadow:0 0 14px rgba(52,211,153,.18)}
+  .rev-head{font-weight:700;color:var(--green)}
+  .rev-sig{color:var(--muted);margin-top:4px}
   .conf-lbl{margin-top:7px;font-size:.86rem;line-height:1.5;color:var(--text);opacity:.92;
     display:flex;gap:6px;align-items:flex-start}
   .conf-lbl .cl-ic{flex:none}
@@ -1102,6 +1107,14 @@ function card(r){
     </div>`;
   }
 
+  // กล่องสัญญาณกลับตัวหลังลงหลายวัน — โชว์เมื่อเข้าเงื่อนไขตั้งแต่ 2/7 ข้อขึ้นไป
+  const rev = r.reversal;
+  const revBlock = rev ? `<div class="rev-box${rev.score>=4?' strong':''}">
+    <div class="rev-head">🔄 ${escHtml(rev.label)}
+      <span class="conf">(เข้าเงื่อนไข ${rev.score}/${rev.max} ข้อ · ลงมา ${rev.down_days}/6 วัน · -${rev.drop_pct}% จาก high 10 วัน)</span></div>
+    ${rev.signals.map(s=>`<div class="rev-sig">✓ ${escHtml(s)}</div>`).join('')}
+  </div>` : '';
+
   const sigs = r.signals.filter(s=>s.weight>=1).map(s=>
     `<div class="sig"><span class="ic ${s.dir==='bull'?'up':'down'}">${s.dir==='bull'?'▲':'▼'}</span><span>${glossify(s.desc)}</span></div>`
   ).join('');
@@ -1125,6 +1138,7 @@ function card(r){
     <div><span class="verdict ${verdictClass(r.verdict)}">${verdictThai(r.verdict)}</span>${confInline}</div>
     ${confLine}
     <div class="meter"><i style="${barStyle}"></i></div>
+    ${revBlock}
     <div class="stats">
       <div><span>ปิดก่อนหน้า:</span> <b>${fmt(r.prev_close)}</b></div>
       <div><span>${gl('กรอบ 52 สัปดาห์')}:</span> <b>${fmt(r.w52l)} – ${fmt(r.w52h)}</b></div>
