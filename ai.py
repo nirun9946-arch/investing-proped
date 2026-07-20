@@ -139,6 +139,23 @@ def _compact_payload(r, smart=None, insider=None, news_items=None):
         "สถิติ5วัน": ({"โอกาสขึ้น_pct": round(pred["prob_up"] * 100),
                        "จากเหตุการณ์คล้ายกัน_ครั้ง": pred["n"]} if pred else None),
     }
+    tr = r.get("trapped")
+    if tr:
+        out["คนติดดอย"] = {
+            "สัดส่วนวอลุ่มเหนือราคา_ติดดอย_pct": tr.get("above_pct"),
+            "สัดส่วนวอลุ่มใต้ราคา_มีกำไร_pct": tr.get("below_pct"),
+            "ต้นทุนเฉลี่ยตลาด": tr.get("avg_cost"),
+            "ราคาเทียบต้นทุนเฉลี่ย_pct": tr.get("vs_avg_cost"),
+            "โซนแรงขายรอเท่าทุน": tr.get("heavy_resist"),
+            "สรุป": tr.get("label"),
+        }
+    hd = r.get("holders")
+    if hd:
+        out["โครงสร้างผู้ถือหุ้น"] = {
+            "รายใหญ่_สถาบัน_pct": hd.get("inst"),
+            "ผู้บริหาร_pct": hd.get("insider"),
+            "รายย่อย_pct": hd.get("retail"),
+        }
     rev = r.get("reversal")
     if rev:
         out["สัญญาณกลับตัวหลังลงหลายวัน"] = {

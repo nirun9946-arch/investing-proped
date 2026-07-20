@@ -160,6 +160,52 @@ def volume_profile(df, lookback=120, bins=40):
             "profile": profile}
 
 
+def trapped_zone(vp, price):
+    """ประมาณสัดส่วน "คนติดดอย" จาก Volume Profile
+
+    หลักการ: วอลุ่มที่ซื้อขายกันที่ระดับราคา "สูงกว่า" ราคาปัจจุบัน = ต้นทุนของคน
+    ที่ซื้อแล้วยังขาดทุนอยู่ (ติดดอย) ส่วนวอลุ่มใต้ราคาปัจจุบัน = คนที่มีกำไร
+    เป็นการประมาณจากราคาที่ซื้อขายจริงย้อนหลัง ~120 วัน ไม่ใช่ต้นทุนรายบุคคลจริง
+    """
+    prof = (vp or {}).get("profile") or []
+    if not prof or not price:
+        return None
+    above = sum(b["v"] for b in prof if b["p"] > price)
+    below = sum(b["v"] for b in prof if b["p"] < price)
+    total = above + below
+    if total <= 0:
+        return None
+    above_pct = above / total * 100
+
+    # ต้นทุนเฉลี่ยถ่วงน้ำหนักวอลุ่ม — จุดที่ "คนส่วนใหญ่ซื้อมา"
+    wsum = sum(b["p"] * b["v"] for b in prof)
+    vsum = sum(b["v"] for b in prof)
+    avg_cost = wsum / vsum if vsum else None
+
+    # แนวต้านจากคนติดดอย: โซนวอลุ่มหนาสุดที่อยู่เหนือราคา (คนรอ "เท่าทุนแล้วขาย")
+    above_bins = [b for b in prof if b["p"] > price]
+    heavy = max(above_bins, key=lambda b: b["v"]) if above_bins else None
+
+    if above_pct >= 70:
+        label, tone = "ติดดอยหนัก — แรงขายรอเท่าทุนเยอะ", "bad"
+    elif above_pct >= 45:
+        label, tone = "ติดดอยปานกลาง — มีแรงขายเหนือราคา", "warn"
+    elif above_pct >= 25:
+        label, tone = "ติดดอยน้อย — ทางขึ้นค่อนข้างโล่ง", "ok"
+    else:
+        label, tone = "แทบไม่มีคนติดดอย — ส่วนใหญ่มีกำไร", "good"
+
+    return {
+        "above_pct": round(above_pct, 1),
+        "below_pct": round(100 - above_pct, 1),
+        "avg_cost": round(avg_cost, 4) if avg_cost else None,
+        "vs_avg_cost": round((price / avg_cost - 1) * 100, 1) if avg_cost else None,
+        "heavy_resist": round(heavy["p"], 4) if heavy else None,
+        "label": label, "tone": tone,
+        "profile": prof,
+    }
+
+
 def predict_5d(df, price):
     """Predictive Analytics: หาวันในอดีตที่สภาวะตลาดเหมือนวันนี้ (เทรนด์/RSI/MACD)
     แล้ววัดสถิติจริงว่า 5 วันถัดมาราคาขึ้นกี่เปอร์เซ็นต์ของครั้งทั้งหมด"""
@@ -287,6 +333,7 @@ def fundamentals(tk, price):
            "market_state": None, "value_label": "N/A",
            "value_desc": "ไม่มีข้อมูลพื้นฐาน",
            "sector": None, "industry": None, "company": None,
+           "holders": None,
            "pre_price": None, "pre_chg": None, "post_price": None, "post_chg": None}
     try:
         info = tk.info or {}
@@ -339,6 +386,21 @@ def fundamentals(tk, price):
     out["company"] = info.get("shortName") or info.get("longName")
     if info.get("quoteType") == "ETF" and not out["sector"]:
         out["sector"] = "ETF"
+
+    # โครงสร้างผู้ถือหุ้น: รายใหญ่ (สถาบัน) / ผู้บริหาร / รายย่อยที่เหลือ
+    # ตัวเลขจากแบบรายงาน 13F+SEC รายไตรมาส — เป็น "สัดส่วนการถือครอง" ไม่ใช่ยอดซื้อขายรายวัน
+    inst = info.get("heldPercentInstitutions")
+    insd = info.get("heldPercentInsiders")
+    if inst is not None or insd is not None:
+        i_pct = (inst or 0) * 100
+        n_pct = (insd or 0) * 100
+        # Yahoo บางตัวรายงานเกิน 100% (นับซ้ำหุ้นที่ให้ยืม) — บีบให้อยู่ในกรอบที่สมเหตุสมผล
+        if i_pct + n_pct > 100:
+            scale = 100 / (i_pct + n_pct)
+            i_pct, n_pct = i_pct * scale, n_pct * scale
+        retail = max(0.0, 100 - i_pct - n_pct)
+        out["holders"] = {"inst": round(i_pct, 1), "insider": round(n_pct, 1),
+                          "retail": round(retail, 1)}
     if out["target"]:
         out["upside"] = (out["target"] / price - 1) * 100
 
@@ -657,6 +719,7 @@ def analyze(ticker, cfg):
         "vp": vp,
         "prediction": prediction,
         "reversal": reversal,
+        "trapped": trapped_zone(vp, price),
         # กราฟจิ๋ว 30 วันสำหรับ sparkline บนการ์ด
         "spark": [round(float(x), 4) for x in df["Close"].tail(30)],
     }

@@ -193,6 +193,36 @@
   .pred-flex{display:flex;align-items:center;gap:14px}
   .pdonut{width:64px;height:64px;flex:none;filter:drop-shadow(0 0 6px rgba(52,211,153,.25))}
   .pd-txt{font-size:.95rem;font-weight:800;fill:var(--text)}
+  /* ===== กราฟคนติดดอย (Volume Profile แนวนอน) ===== */
+  .trap{margin-top:12px;padding:12px;border-radius:var(--r-block);
+    background:var(--card2);border:1px solid var(--border)}
+  .trap-head{display:flex;justify-content:space-between;align-items:baseline;
+    font-size:.82rem;font-weight:700;margin-bottom:8px;gap:8px}
+  .trap-head .tt-bad{color:var(--red)} .trap-head .tt-warn{color:var(--yellow)}
+  .trap-head .tt-ok{color:var(--blue)} .trap-head .tt-good{color:var(--green)}
+  .trap-chart{width:100%;height:96px;display:block}
+  .trap-split{display:flex;height:22px;border-radius:6px;overflow:hidden;margin-top:9px;
+    font-size:.7rem;font-weight:800}
+  .trap-split div{display:flex;align-items:center;justify-content:center;color:#0b1220;
+    white-space:nowrap;overflow:hidden}
+  .trap-up{background:linear-gradient(90deg,rgba(248,113,113,.85),rgba(248,113,113,.6))}
+  .trap-dn{background:linear-gradient(90deg,rgba(52,211,153,.6),rgba(52,211,153,.85))}
+  .trap-note{font-size:.75rem;color:var(--muted);line-height:1.5;margin-top:7px}
+  .trap-note b{color:var(--text);font-variant-numeric:tabular-nums}
+  /* ===== กราฟรายใหญ่ / รายย่อย ===== */
+  .hold{margin-top:12px;padding:12px;border-radius:var(--r-block);
+    background:var(--card2);border:1px solid var(--border)}
+  .hold-head{font-size:.82rem;font-weight:700;margin-bottom:9px}
+  .hold-bar{display:flex;height:26px;border-radius:7px;overflow:hidden;font-size:.7rem;font-weight:800}
+  .hold-bar div{display:flex;align-items:center;justify-content:center;color:#0b1220;
+    white-space:nowrap;overflow:hidden;transition:flex-grow .5s var(--ease-spring)}
+  .h-inst{background:linear-gradient(90deg,#7342E2,#9b6bff)}
+  .h-insd{background:linear-gradient(90deg,#fbbf24,#fcd34d)}
+  .h-ret{background:linear-gradient(90deg,#34d399,#6ee7b7)}
+  .hold-key{display:flex;flex-wrap:wrap;gap:10px;margin-top:9px;font-size:.74rem;color:var(--muted)}
+  .hold-key span{display:inline-flex;align-items:center;gap:5px}
+  .hold-key i{width:9px;height:9px;border-radius:3px;display:inline-block}
+  .hold-note{font-size:.72rem;color:var(--muted);line-height:1.5;margin-top:8px}
   /* ===== ลายกราฟฟิกประจำกลุ่มธุรกิจบนการ์ด ===== */
   .card{overflow:hidden}
   .sec-art{position:absolute;top:-14px;right:-12px;width:132px;height:132px;
@@ -1110,6 +1140,77 @@ function glossify(txt){
 }
 
 // ===== Sparkline 30 วัน: SVG ล้วน ไม่ใช้ไลบรารี =====
+// ===== กราฟคนติดดอย: Volume Profile แนวนอน แดง=เหนือราคา(ติดดอย) เขียว=ใต้ราคา(กำไร) =====
+function trapBlock(r, price){
+  const t = r.trapped;
+  if(!t || !Array.isArray(t.profile) || t.profile.length < 5) return '';
+  const prof = t.profile;
+  const W = 300, H = 96;
+  const prices = prof.map(b=>b.p);
+  const lo = Math.min(...prices), hi = Math.max(...prices), span = (hi-lo)||1;
+  const yOf = p => H - (p-lo)/span*H;              // ราคาสูง = อยู่บน
+  const bh = Math.max(1.4, H/prof.length - 0.8);
+  const bars = prof.map(b=>{
+    const w = Math.max(1, b.v*(W-46));
+    const col = b.p > price ? 'var(--red)' : 'var(--green)';
+    const op = b.p > price ? .62 : .5;
+    return `<rect x="0" y="${(yOf(b.p)-bh/2).toFixed(1)}" width="${w.toFixed(1)}" height="${bh.toFixed(1)}"
+      fill="${col}" opacity="${op}" rx="1"/>`;
+  }).join('');
+  const py = yOf(price);
+  const ay = t.avg_cost != null ? yOf(t.avg_cost) : null;
+  const toneCls = {bad:'tt-bad',warn:'tt-warn',ok:'tt-ok',good:'tt-good'}[t.tone] || '';
+  return `<div class="trap">
+    <div class="trap-head"><span>⛰️ แผนที่ต้นทุน — คนติดดอย</span>
+      <span class="${toneCls}">${escHtml(t.label)}</span></div>
+    <svg class="trap-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      ${bars}
+      ${ay!=null?`<line x1="0" y1="${ay.toFixed(1)}" x2="${W}" y2="${ay.toFixed(1)}"
+        stroke="var(--yellow)" stroke-width="1" stroke-dasharray="4 3" opacity=".85"/>`:''}
+      <line x1="0" y1="${py.toFixed(1)}" x2="${W}" y2="${py.toFixed(1)}"
+        stroke="var(--purple-hi)" stroke-width="1.6"/>
+      <circle cx="${W-6}" cy="${py.toFixed(1)}" r="3.4" fill="var(--purple-hi)"/>
+    </svg>
+    <div class="trap-split">
+      <div class="trap-up" style="flex:${Math.max(t.above_pct,0.001)}">${t.above_pct>=12?`ติดดอย ${t.above_pct}%`:''}</div>
+      <div class="trap-dn" style="flex:${Math.max(t.below_pct,0.001)}">${t.below_pct>=12?`มีกำไร ${t.below_pct}%`:''}</div>
+    </div>
+    <div class="trap-note">
+      เส้นม่วง = ราคาปัจจุบัน · เส้นเหลืองประ = ต้นทุนเฉลี่ยตลาด <b>${fmt(t.avg_cost)}</b>
+      ${t.vs_avg_cost!=null?` (ราคาตอนนี้${t.vs_avg_cost>=0?'สูงกว่า':'ต่ำกว่า'} <b>${fmt(Math.abs(t.vs_avg_cost),1)}%</b>)`:''}
+      ${t.heavy_resist!=null?`<br>โซนแรงขายรอเท่าทุนหนาสุดอยู่แถว <b>${fmt(t.heavy_resist)}</b>`:''}
+      <br><span style="opacity:.75">ประมาณจากวอลุ่มซื้อขายจริง 120 วันล่าสุด ไม่ใช่ต้นทุนรายบุคคล</span>
+    </div>
+  </div>`;
+}
+
+// ===== กราฟรายใหญ่ / รายย่อย: สัดส่วนการถือครองหุ้น =====
+function holdBlock(r){
+  const h = r.holders;
+  if(!h) return '';
+  const parts = [
+    ['h-inst', h.inst,    'รายใหญ่ (สถาบัน/กองทุน)', '#7342E2'],
+    ['h-insd', h.insider, 'ผู้บริหาร/คนใน',          '#fbbf24'],
+    ['h-ret',  h.retail,  'รายย่อย',                  '#34d399'],
+  ].filter(p => p[1] > 0);
+  if(!parts.length) return '';
+  const bar = parts.map(([c,v]) =>
+    `<div class="${c}" style="flex:${v}">${v>=11?fmt(v,0)+'%':''}</div>`).join('');
+  const key = parts.map(([,v,label,col]) =>
+    `<span><i style="background:${col}"></i>${escHtml(label)} <b style="color:var(--text)">${fmt(v,1)}%</b></span>`).join('');
+  const big = h.inst >= 70 ? 'สถาบันถือครองเกิน 70% — ราคามักเคลื่อนตามเงินก้อนใหญ่ ผันผวนน้อยกว่าหุ้นรายย่อยคุม'
+            : h.inst >= 40 ? 'สัดส่วนสถาบันระดับกลาง — มีทั้งแรงซื้อสถาบันและรายย่อย'
+            : 'รายย่อยถือครองเป็นส่วนใหญ่ — ราคาอาจผันผวนตามกระแสข่าวได้ง่ายกว่า';
+  return `<div class="hold">
+    <div class="hold-head">👥 ใครถือหุ้นตัวนี้อยู่</div>
+    <div class="hold-bar">${bar}</div>
+    <div class="hold-key">${key}</div>
+    <div class="hold-note">${escHtml(big)}<br>
+      <span style="opacity:.75">ข้อมูลการถือครองจากแบบรายงาน SEC/13F รายไตรมาส (ล่าช้าได้ ~45 วัน) — ไม่ใช่ยอดซื้อขายรายวัน</span>
+    </div>
+  </div>`;
+}
+
 // ===== ลายกราฟฟิกประจำกลุ่มธุรกิจ =====
 // แต่ละ sector มี: ชื่อไทย · สี · ไอคอนเล็ก (ป้าย) · ลายใหญ่ (ลายน้ำมุมการ์ด)
 // path ทั้งหมดวาดบน viewBox 24x24 สไตล์เส้น (stroke) ให้เข้ากับธีม
@@ -1368,7 +1469,7 @@ function card(r){
     <button class="ai-btn" id="aib-${r.ticker}" onclick="aiAnalyze('${r.ticker}')">🤖 AI วิเคราะห์เจาะลึก (ฟรี)</button>
     <div id="ai-${r.ticker}" style="display:none"></div>
     <button class="deep-btn${deepOpen?' on':''}" id="deepb-${r.ticker}" onclick="toggleDeep('${r.ticker}')">
-      <span>🔎 ข้อมูลเชิงลึก — RSI · วอลุ่ม · Volume Profile · สัญญาณทั้งหมด</span><span class="chev">▼</span>
+      <span>🔎 ข้อมูลเชิงลึก — คนติดดอย · รายใหญ่/รายย่อย · RSI · Volume Profile</span><span class="chev">▼</span>
     </button>
     <div class="deep${deepOpen?' open':''}" id="deep-${r.ticker}"><div class="deep-in">
       <div class="stats">
@@ -1380,6 +1481,8 @@ function card(r){
         <div class="rsix-bar"><i style="left:${Math.min(100,Math.max(0,r.rsi||50)).toFixed(1)}%"></i></div>
         <div class="rsix-zone"><span>◀ Oversold 30</span><span>โซนกลาง</span><span>Overbought 70 ▶</span></div>
       </div>
+      ${trapBlock(r, mainPrice)}
+      ${holdBlock(r)}
       ${vpBlock}
       ${predBlock}
       <div id="sm-${r.ticker}">${smartBlock(r.ticker)}</div>
