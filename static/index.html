@@ -1140,6 +1140,43 @@ function glossify(txt){
 }
 
 // ===== Sparkline 30 วัน: SVG ล้วน ไม่ใช้ไลบรารี =====
+// ===== ราคาที่จะโชว์: แยกราคาพาดหัว (session จริง) ออกจากราคานอกเวลา =====
+// แก้อาการ "ราคาไม่ตรง": เดิมพาดหัวใช้ราคาสด (นอกเวลา) พร้อม % เทียบเมื่อวาน
+// ทำให้เลข % เว่อร์ (รวมการวิ่งทั้งวัน + after-hours) — ตอนนี้พาดหัว = ราคาปิด session
+// จริง + % ของ session (ตรงกับ Google/โบรก) ส่วนนอกเวลาเป็นบรรทัดรอง วัด % จากราคาปิด
+function priceView(r, lq){
+  const st = r ? r.market_state : null;
+  const reg = (st === 'REGULAR' || !st);
+  if(reg){
+    // ตลาดเปิด/ไม่ทราบสถานะ: ราคาสดคือความจริง
+    const price = lq ? lq.price : (r ? r.price : null);
+    const chg   = (lq && lq.chg != null) ? lq.chg : (r ? r.change_pct : null);
+    return {price, chg, oh:null};
+  }
+  // นอกเวลาทำการ: พาดหัว = ราคาปิด/ล่าสุดของ session จริง (จาก analyze)
+  const base = r ? r.price : null;
+  const isPre = (st === 'PRE' || st === 'PREPRE');
+  const ohRaw = lq ? lq.price : (r ? (isPre ? r.pre_price : r.post_price) : null);
+  let oh = null;
+  // ราคานอกเวลา วัด % จากราคาปิด session — ไม่ปนกับการวิ่งของ session
+  if(ohRaw != null && base && Math.abs(ohRaw - base) > 1e-6)
+    oh = {price: ohRaw, chg: (ohRaw / base - 1) * 100, pre: isPre};
+  return {price: base, chg: (r ? r.change_pct : null), oh};
+}
+
+// สร้าง HTML บรรทัดราคานอกเวลา (ใช้ทั้งตอนเรนเดอร์การ์ดและตอน poll เพื่อให้ตรงกันเสมอ)
+function ohLineHtml(r, lq){
+  const pv = priceView(r, lq);
+  if(!pv.oh) return '';
+  const o = pv.oh;
+  const icon = o.pre ? '🌅' : '🌙';
+  const label = o.pre ? ('ก่อนเปิดตลาด ('+gl('pre-market')+')') : ('หลังปิด/ข้ามคืน ('+gl('after-hours')+')');
+  const pu = o.chg >= 0;
+  const ref = (r && r.price != null) ? ` · ราคาปิด session <b>${fmt(r.price)}</b>` : '';
+  return `<div class="ext">${icon} ${label}: <b>${fmt(o.price)}</b> ` +
+    `<span class="${pu?'up':'down'}">${pu?'+':''}${fmt(o.chg)}%</span>${ref}</div>`;
+}
+
 // ===== กราฟคนติดดอย: Volume Profile แนวนอน แดง=เหนือราคา(ติดดอย) เขียว=ใต้ราคา(กำไร) =====
 function trapBlock(r, price){
   const t = r.trapped;
@@ -1286,11 +1323,11 @@ function card(r){
     <p style="color:var(--red);margin-top:10px;font-size:.9rem">❌ ${r.error}</p>
     <button class="del" onclick="removeTicker('${r.ticker}')">✕</button></div>`;
 
-  // ราคาหลักบนการ์ด = ราคาสดจาก /api/quotes (ถ้ามี) — ใช้แหล่งเดียวกับ poll เพื่อไม่ให้เลขกระโดด
-  // ถ้าราคาสดยังไม่มา (ยิงไม่ทัน/ล่ม) ค่อย fallback เป็นราคาปิดรายวันจาก analyze
+  // ราคาที่จะโชว์ผ่าน priceView: ตลาดเปิด=ราคาสด · นอกเวลา=ราคาปิด session จริง (ตรงกับ Google)
   const lq = liveQuotes[r.ticker];
-  const mainPrice = lq ? lq.price : r.price;
-  const mainChg   = (lq && lq.chg != null) ? lq.chg : r.change_pct;
+  const pv = priceView(r, lq);
+  const mainPrice = pv.price;
+  const mainChg   = pv.chg;
   const isDelayed = /\.BK$/i.test(r.ticker);   // หุ้นไทยราคาดีเลย์ ~15 นาที
   const up = mainChg >= 0;
   const score = r.score, maxBar = 10;
@@ -1320,29 +1357,8 @@ function card(r){
       <div class="vdesc">${glossify(r.value_desc||'')}</div>
     </div>`;
 
-  // แถวราคานอกเวลา (pre/post) — ใช้ "แหล่งเดียว" กับราคาพาดหัวเสมอ (ราคาสด lq ก่อน,
-  // ตกไป info ของ Yahoo) เพื่อไม่ให้เห็นเลขนอกเวลา 2 ค่าที่ขัดกันบนการ์ดเดียว (อาการ "ราคาแปลก")
-  let extLines = '';
-  const st = r.market_state;
-  const ref = r.prev_close != null ? ` · ปิดจริงล่าสุด <b>${fmt(r.prev_close)}</b>` : '';
-  const isPre  = (st === 'PRE' || st === 'PREPRE');
-  const isPost = (st === 'POST' || st === 'POSTPOST');
-  // ราคานอกเวลาแหล่งเดียว: ราคาสดถ้ามี ไม่งั้นใช้ pre/post จาก info
-  const outPrice = lq ? lq.price : (isPre ? r.pre_price : isPost ? r.post_price : r.post_price);
-  const outChg   = lq ? lq.chg   : (isPre ? r.pre_chg   : isPost ? r.post_chg   : r.post_chg);
-  const extRow = (icon, label) => {
-    if(outPrice == null) return '';
-    // ถ้าราคานอกเวลาเท่าราคาปิดจริง (Yahoo ส่งราคาปิดมาแทน) แปลว่าไม่มีดีลนอกเวลาจริง
-    if(r.prev_close != null && Math.abs(outPrice - r.prev_close) < 1e-6)
-      return `<div class="ext">${icon} ${label}: <b>${fmt(outPrice)}</b> <span class="conf" style="margin-left:0">(ยังไม่มีการซื้อขายนอกเวลา — เท่าราคาปิด)</span></div>`;
-    const pu = (outChg ?? 0) >= 0;
-    return `<div class="ext">${icon} ${label}: <b>${fmt(outPrice)}</b> ` +
-      `<span class="${pu?'up':'down'}">${pu?'+':''}${outChg!=null?fmt(outChg):'-'}%</span>${ref}</div>`;
-  };
-  if(isPre)       extLines += extRow('🌅', 'ก่อนเปิดตลาด ('+gl('pre-market')+')');
-  else if(isPost) extLines += extRow('🌙', 'หลังปิด/ข้ามคืน ('+gl('after-hours')+')');
-  else if(st === 'CLOSED' && lq && r.prev_close != null && Math.abs(lq.price - r.prev_close) > 1e-6)
-    extLines += extRow('🌙', 'ซื้อขายนอกเวลาล่าสุด');
+  // แถวราคานอกเวลา (pre/post) — คำนวณจาก priceView แหล่งเดียวกับพาดหัว (ดู ohLineHtml)
+  const extLines = ohLineHtml(r, lq);
 
   const adviceBlock = r.advice_label ? `<div class="advice ad-${r.advice_tone}">
       <span class="albl">💡 ควรซื้อไหม? → ${r.advice_label}</span>
@@ -1444,7 +1460,7 @@ function card(r){
     ${sa.tag}
     <div class="price" id="live-${r.ticker}">${fmt(mainPrice)}<span class="chg ${up?'up':'down'}">${up?'+':''}${fmt(mainChg)}%</span></div>
     ${isDelayed?'<div class="ext" style="color:var(--muted)">⏱ หุ้นไทย: ราคาดีเลย์ ~15 นาที (ตามตลาด SET)</div>':''}
-    ${extLines}
+    <div id="oh-${r.ticker}">${extLines}</div>
     ${sparkSvg(r)}
     <div><span class="verdict ${verdictClass(r.verdict)}">${verdictThai(r.verdict)}</span>${confInline}</div>
     ${confLine}
@@ -2072,14 +2088,21 @@ async function fetchQuotes(){
       }
       const el = document.getElementById('live-' + q.ticker);
       if(!el) return;
-      const up = (q.chg ?? 0) >= 0;
-      el.innerHTML = fmt(q.price) +
-        `<span class="chg ${up?'up':'down'}">${up?'+':''}${q.chg!=null?fmt(q.chg):'-'}%</span>`;
+      // ใช้ priceView เหมือนตอนเรนเดอร์: นอกเวลาทำการ พาดหัว = ราคาปิด session จริง
+      // ราคาสดของ q เป็นราคานอกเวลา → ไปอยู่บรรทัด oh แทน ไม่ทับพาดหัวให้ % เพี้ยน
+      const rr = results[q.ticker];
+      const pv = priceView(rr, {price:q.price, chg:q.chg});
+      const up = (pv.chg ?? 0) >= 0;
+      el.innerHTML = fmt(pv.price) +
+        `<span class="chg ${up?'up':'down'}">${up?'+':''}${pv.chg!=null?fmt(pv.chg):'-'}%</span>`;
       if(oldPrice != null && Math.abs(q.price - oldPrice) > 1e-9){
         el.classList.remove('flash-up','flash-down');
         void el.offsetWidth;  // รีสตาร์ทแอนิเมชัน
         el.classList.add(q.price > oldPrice ? 'flash-up' : 'flash-down');
       }
+      // อัปเดตบรรทัดราคานอกเวลาให้ขยับตามราคาสดด้วย (ถ้ามี)
+      const ohEl = document.getElementById('oh-' + q.ticker);
+      if(ohEl) ohEl.innerHTML = ohLineHtml(rr, {price:q.price, chg:q.chg});
     });
     if(latestTs) lastQuoteTs = latestTs;
     const lt = document.getElementById('liveTime');
