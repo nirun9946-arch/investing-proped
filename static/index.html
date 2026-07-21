@@ -1320,35 +1320,29 @@ function card(r){
       <div class="vdesc">${glossify(r.value_desc||'')}</div>
     </div>`;
 
-  // แถวราคานอกเวลา (pre/post) — แสดง "ทุกใบ" ที่อยู่ในช่วงนอกเวลาทำการ
-  // เดิมซ่อนแถวนี้เมื่อมีราคาสด ทำให้การ์ดที่ราคาสดดึงไม่ทันเท่านั้นที่โชว์ → เห็นไม่เท่ากัน
-  // ตอนนี้ใช้ราคาสดเป็นหลัก (ตรงกับ headline เสมอ ไม่ขัดกัน) และเสริมราคาปิดจริงเป็นจุดอ้างอิง
+  // แถวราคานอกเวลา (pre/post) — ใช้ "แหล่งเดียว" กับราคาพาดหัวเสมอ (ราคาสด lq ก่อน,
+  // ตกไป info ของ Yahoo) เพื่อไม่ให้เห็นเลขนอกเวลา 2 ค่าที่ขัดกันบนการ์ดเดียว (อาการ "ราคาแปลก")
   let extLines = '';
   const st = r.market_state;
   const ref = r.prev_close != null ? ` · ปิดจริงล่าสุด <b>${fmt(r.prev_close)}</b>` : '';
-  const outPrice = lq ? lq.price : null;
-  const outChg = lq ? lq.chg : null;
-  if(st === 'PRE' || st === 'PREPRE'){
-    const p = outPrice != null ? outPrice : r.pre_price;
-    const c = outPrice != null ? outChg : r.pre_chg;
-    if(p != null){
-      const pu = (c ?? 0) >= 0;
-      extLines += `<div class="ext">🌅 ก่อนเปิดตลาด (${gl('pre-market')}): <b>${fmt(p)}</b> ` +
-        `<span class="${pu?'up':'down'}">${pu?'+':''}${c!=null?fmt(c):'-'}%</span>${ref}</div>`;
-    }
-  } else if(st === 'POST' || st === 'POSTPOST'){
-    const p = outPrice != null ? outPrice : r.post_price;
-    const c = outPrice != null ? outChg : r.post_chg;
-    if(p != null){
-      const pu = (c ?? 0) >= 0;
-      extLines += `<div class="ext">🌙 หลังปิด/ข้ามคืน (${gl('after-hours')}): <b>${fmt(p)}</b> ` +
-        `<span class="${pu?'up':'down'}">${pu?'+':''}${c!=null?fmt(c):'-'}%</span>${ref}</div>`;
-    }
-  } else if(st === 'CLOSED' && r.post_price != null){
-    const pu = (r.post_chg ?? 0) >= 0;
-    extLines += `<div class="ext">🌙 ซื้อขายนอกเวลาล่าสุด: <b>${fmt(r.post_price)}</b> ` +
-      `<span class="${pu?'up':'down'}">${pu?'+':''}${fmt(r.post_chg)}%</span>${ref}</div>`;
-  }
+  const isPre  = (st === 'PRE' || st === 'PREPRE');
+  const isPost = (st === 'POST' || st === 'POSTPOST');
+  // ราคานอกเวลาแหล่งเดียว: ราคาสดถ้ามี ไม่งั้นใช้ pre/post จาก info
+  const outPrice = lq ? lq.price : (isPre ? r.pre_price : isPost ? r.post_price : r.post_price);
+  const outChg   = lq ? lq.chg   : (isPre ? r.pre_chg   : isPost ? r.post_chg   : r.post_chg);
+  const extRow = (icon, label) => {
+    if(outPrice == null) return '';
+    // ถ้าราคานอกเวลาเท่าราคาปิดจริง (Yahoo ส่งราคาปิดมาแทน) แปลว่าไม่มีดีลนอกเวลาจริง
+    if(r.prev_close != null && Math.abs(outPrice - r.prev_close) < 1e-6)
+      return `<div class="ext">${icon} ${label}: <b>${fmt(outPrice)}</b> <span class="conf" style="margin-left:0">(ยังไม่มีการซื้อขายนอกเวลา — เท่าราคาปิด)</span></div>`;
+    const pu = (outChg ?? 0) >= 0;
+    return `<div class="ext">${icon} ${label}: <b>${fmt(outPrice)}</b> ` +
+      `<span class="${pu?'up':'down'}">${pu?'+':''}${outChg!=null?fmt(outChg):'-'}%</span>${ref}</div>`;
+  };
+  if(isPre)       extLines += extRow('🌅', 'ก่อนเปิดตลาด ('+gl('pre-market')+')');
+  else if(isPost) extLines += extRow('🌙', 'หลังปิด/ข้ามคืน ('+gl('after-hours')+')');
+  else if(st === 'CLOSED' && lq && r.prev_close != null && Math.abs(lq.price - r.prev_close) > 1e-6)
+    extLines += extRow('🌙', 'ซื้อขายนอกเวลาล่าสุด');
 
   const adviceBlock = r.advice_label ? `<div class="advice ad-${r.advice_tone}">
       <span class="albl">💡 ควรซื้อไหม? → ${r.advice_label}</span>

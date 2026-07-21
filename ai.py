@@ -88,7 +88,9 @@ def _provider_chain():
         "claude": (os.environ.get("ANTHROPIC_API_KEY") or cfg.get("anthropic_key")
                    or cfg.get("api_key")),  # api_key = ชื่อเดิม รองรับย้อนหลัง
     }
-    order = ["gemini", "groq", "deepseek", "claude"]  # ฟรี/ถูกก่อน แพงทีหลัง
+    # Groq ก่อน: ฟรี ~1,000 ครั้ง/วัน + เสถียรกว่า (Gemini ฟรีแค่ ~20/วัน หมดเร็ว
+    # โดยเฉพาะบนมือถือที่กดหลายที) — Gemini เป็นตัวสำรอง
+    order = ["groq", "gemini", "deepseek", "claude"]
     pref = (cfg.get("provider") or "").lower()
     if pref in order and keys.get(pref):
         order.remove(pref)
