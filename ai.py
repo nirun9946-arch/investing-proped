@@ -116,7 +116,7 @@ def _compact_payload(r, smart=None, insider=None, news_items=None):
         "ticker": r.get("ticker"),
         "ราคา": r.get("price"),
         "เปลี่ยนแปลง_pct": r.get("change_pct"),
-        "ราคาปิดก่อนหน้า": r.get("prev_close"),
+        "ราคาปิดก่อนหน้า": r.get("sess_prev") or r.get("prev_close"),
         "สถานะตลาด": r.get("market_state"),
         "ราคา_premarket": r.get("pre_price"),
         "กรอบ52สัปดาห์": [r.get("w52l"), r.get("w52h")],

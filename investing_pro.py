@@ -699,6 +699,9 @@ def analyze(ticker, cfg):
         "ticker": ticker,
         "price": price,
         "change_pct": (price / float(prev["Close"]) - 1) * 100,
+        # ราคาปิดของ session ก่อนหน้าราคาพาดหัว — เป็นฐานของ change_pct จริงๆ
+        # (ต่างจาก prev_close ที่เป็น "ปิดล่าสุดที่จบแล้ว" ซึ่งนอกเวลาทำการจะเท่ากับ price)
+        "sess_prev": float(prev["Close"]),
         "rsi": rsi_now,
         "ema20": float(last["EMA20"]),
         "ema50": float(last["EMA50"]),

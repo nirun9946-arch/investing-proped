@@ -1520,7 +1520,7 @@ function card(r){
     </button>
     <div class="deep${deepOpen?' open':''}" id="deep-${r.ticker}"><div class="deep-in">
       <div class="stats">
-        <div><span>ปิดก่อนหน้า:</span> <b>${fmt(r.prev_close)}</b></div>
+        <div><span>ปิดก่อนหน้า:</span> <b>${fmt(r.sess_prev ?? r.prev_close)}</b></div>
         <div><span>${gl('วอลุ่ม')}:</span> <b>${fmt(r.vol_ratio)}x</b></div>
       </div>
       <div class="rsix">
