@@ -274,6 +274,29 @@ def api_market():
         return jsonify({"error": str(e), "items": []}), 500
 
 
+_MARKET_META = {s[0]: (s[1], s[2], s[3]) for s in MARKET_SYMBOLS}
+
+
+@app.route("/api/market-ta/<path:symbol>")
+def api_market_ta(symbol):
+    """วิเคราะห์เทคนิคของสินทรัพย์ในแถบตลาด (ทอง/น้ำมัน/บิตคอยน์/ดอลลาร์) ด้วยเครื่องเดียวกับหุ้น"""
+    symbol = symbol.strip()
+    if symbol not in _MARKET_META:
+        return jsonify({"ok": False, "error": "สัญลักษณ์ไม่รองรับ"}), 400
+    try:
+        r = core.analyze(symbol, read_config())
+        name, icon, unit = _MARKET_META[symbol]
+        keys = ["ticker", "price", "change_pct", "rsi", "ema20", "ema50", "ema200",
+                "support", "resistance", "atr", "score", "confidence", "confidence_label",
+                "verdict", "signals", "spark", "reversal", "prev_close",
+                "w52h", "w52l", "vol_ratio", "stop_suggest", "target_suggest"]
+        out = {k: r.get(k) for k in keys}
+        out.update({"ok": True, "name": name, "icon": icon, "unit": unit})
+        return jsonify(out)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"วิเคราะห์ไม่สำเร็จ: {str(e)[:120]}"}), 500
+
+
 @app.route("/api/ai/<ticker>")
 def api_ai(ticker):
     """AI วิเคราะห์หุ้นรายตัวด้วย Claude — รวมข้อมูลทุกมิติที่ระบบมี"""
