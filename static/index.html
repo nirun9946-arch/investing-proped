@@ -2242,10 +2242,15 @@ async function fetchQuotes(){
       // ใช้ priceView เหมือนตอนเรนเดอร์: นอกเวลาทำการ พาดหัว = ราคาปิด session จริง
       // ราคาสดของ q เป็นราคานอกเวลา → ไปอยู่บรรทัด oh แทน ไม่ทับพาดหัวให้ % เพี้ยน
       const rr = results[q.ticker];
+      // การ์ดยังวิเคราะห์ไม่เสร็จ/error → อย่าเพิ่งเขียนทับ กันพาดหัว "ไหล" เป็นราคานอกเวลา
+      // แวบหนึ่งแล้วเด้งกลับตอนผลวิเคราะห์มาถึง
+      if(!rr || rr.error) return;
       const pv = priceView(rr, {price:q.price, chg:q.chg});
       const up = (pv.chg ?? 0) >= 0;
-      el.innerHTML = fmt(pv.price) +
+      const newHtml = fmt(pv.price) +
         `<span class="chg ${up?'up':'down'}">${up?'+':''}${pv.chg!=null?fmt(pv.chg):'-'}%</span>`;
+      // เขียน DOM เฉพาะตอนเลขเปลี่ยนจริง — ลดอาการวูบวาบระหว่าง poll
+      if(el.innerHTML !== newHtml) el.innerHTML = newHtml;
       if(oldPrice != null && Math.abs(q.price - oldPrice) > 1e-9){
         el.classList.remove('flash-up','flash-down');
         void el.offsetWidth;  // รีสตาร์ทแอนิเมชัน
@@ -2253,7 +2258,10 @@ async function fetchQuotes(){
       }
       // อัปเดตบรรทัดราคานอกเวลาให้ขยับตามราคาสดด้วย (ถ้ามี)
       const ohEl = document.getElementById('oh-' + q.ticker);
-      if(ohEl) ohEl.innerHTML = ohLineHtml(rr, {price:q.price, chg:q.chg});
+      if(ohEl){
+        const newOh = ohLineHtml(rr, {price:q.price, chg:q.chg});
+        if(ohEl.innerHTML !== newOh) ohEl.innerHTML = newOh;
+      }
     });
     if(latestTs) lastQuoteTs = latestTs;
     const lt = document.getElementById('liveTime');
