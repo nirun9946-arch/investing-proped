@@ -1189,7 +1189,10 @@ function priceView(r, lq){
   }
   // นอกเวลาทำการ: พาดหัว = ราคาปิด/ล่าสุดของ session จริง (จาก analyze)
   const base = r ? r.price : null;
-  const isPre = (st === 'PRE' || st === 'PREPRE');
+  // เฉพาะ PRE เท่านั้นที่เป็น pre-market จริง (4:00-9:30 น. นิวยอร์ก)
+  // PREPRE = กลางดึกก่อนถึงเวลา pre-market → ราคาล่าสุดคือ after-hours ของเมื่อคืน
+  // ถ้าจะเรียกว่า pre-market ต้องมีราคา pre จริงด้วย ไม่งั้นถือเป็นราคาข้ามคืน
+  const isPre = (st === 'PRE') && !(r && r.pre_price == null && r.post_price != null);
   const ohRaw = lq ? lq.price : (r ? (isPre ? r.pre_price : r.post_price) : null);
   let oh = null;
   // ราคานอกเวลา วัด % จากราคาปิด session — ไม่ปนกับการวิ่งของ session
