@@ -1212,8 +1212,20 @@ function ohLineHtml(r, lq){
   const label = o.pre ? ('ก่อนเปิดตลาด ('+gl('pre-market')+')') : ('หลังปิด/ข้ามคืน ('+gl('after-hours')+')');
   const pu = o.chg >= 0;
   const ref = (r && r.price != null) ? ` · ราคาปิด session <b>${fmt(r.price)}</b>` : '';
+  // ดีลเก่าเกิน 1 ชม. = ตลาดพักช่วงข้ามคืน — บอกให้ชัดว่าราคาหยุดเพราะไม่มีการซื้อขาย
+  // (ไม่ใช่แอพค้าง) และให้ดูฟิวเจอร์ส Nasdaq/S&P ที่แถบบนแทนระหว่างรอ
+  let stale = '';
+  if(lq && lq.ts){
+    const age = Date.now() - Date.parse(String(lq.ts).replace(' ', 'T'));
+    if(isFinite(age) && age > 60*60*1000){
+      const t = String(lq.ts).match(/\d{2}:\d{2}/);
+      stale = `<br><span class="conf" style="margin-left:0">⏸ ดีลสุดท้าย ${t?t[0]:''} น. NY — ` +
+        `ตลาดพักข้ามคืน ราคาจะขยับอีกทีช่วง pre-market (~บ่ายสามไทย) · ` +
+        `ระหว่างนี้ดูทิศทางจากฟิวเจอร์ส Nasdaq/S&P ที่แถบบนได้</span>`;
+    }
+  }
   return `<div class="ext">${icon} ${label}: <b>${fmt(o.price)}</b> ` +
-    `<span class="${pu?'up':'down'}">${pu?'+':''}${fmt(o.chg)}%</span>${ref}</div>`;
+    `<span class="${pu?'up':'down'}">${pu?'+':''}${fmt(o.chg)}%</span>${ref}${stale}</div>`;
 }
 
 // ===== กราฟคนติดดอย: Volume Profile แนวนอน แดง=เหนือราคา(ติดดอย) เขียว=ใต้ราคา(กำไร) =====
