@@ -1219,7 +1219,10 @@ function ohLineHtml(r, lq){
     const age = Date.now() - Date.parse(String(lq.ts).replace(' ', 'T'));
     if(isFinite(age) && age > 60*60*1000){
       const t = String(lq.ts).match(/\d{2}:\d{2}/);
-      const isTech = r && (r.sector === 'Technology' || r.sector === 'ETF');
+      // หุ้นเทค/ETF สายเทคอิงฟิวเจอร์ส Nasdaq · ตัวอื่น (รวม ETF ทอง/เงิน/ปันผล) อิง S&P
+      const TECH_ETFS = ['QQQ','QQQM','TQQQ','SMH','SOXX','SOXL','XLK','DRAM','CHPY'];
+      const isTech = r && (r.sector === 'Technology' ||
+        (r.sector === 'ETF' && TECH_ETFS.includes(r.ticker)));
       const fut = overnightData
         ? (isTech ? (overnightData.nq || overnightData.es) : (overnightData.es || overnightData.nq))
         : null;
@@ -2380,7 +2383,12 @@ async function scheduleQuotePoll(immediate){
     // ข้ามช่วงตลาด (เช่น ข้ามคืน → pre-market ตอน ~15:00 น. ไทย) → วาดการ์ดใหม่
     // ให้ป้าย 🌙/🌅/🟢 และบรรทัดราคานอกเวลาเปลี่ยนเองโดยไม่ต้องกดสแกน
     const stNow = usMarketState();
-    if(_lastMktState && stNow !== _lastMktState) render();
+    if(_lastMktState && stNow !== _lastMktState){
+      render();
+      // เปิดตลาด หรือจบวัน (after-hours → ปิดสนิท) → ดึงผลวิเคราะห์ใหม่ทั้งชุด
+      // กันราคาปิด/ฐาน % ค้างเป็นของวันเก่าเมื่อผู้ใช้เปิดหน้าเว็บทิ้งไว้ข้ามวัน
+      if(stNow === 'REGULAR' || (_lastMktState === 'POST' && stNow === 'CLOSED')) scanAll();
+    }
     _lastMktState = stNow;
     await pollQuotes();
     loadMarket(true);             // แถบตลาดโลกอัปเดตรอบเดียวกับราคาหุ้น

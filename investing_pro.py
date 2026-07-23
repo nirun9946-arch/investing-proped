@@ -308,7 +308,9 @@ def prev_close(ticker, tk=None):
         return c[1]
     try:
         tk = tk or yf.Ticker(ticker)
-        h = tk.history(period="5d", interval="1d")
+        # auto_adjust=False = ราคากระดานจริง — ถ้าใช้ราคาปรับปันผล ตัวที่จ่ายปันผลถี่
+        # (เช่น covered-call ETF) จะได้ฐาน % ผิดในวัน ex-dividend
+        h = tk.history(period="5d", interval="1d", auto_adjust=False)
         if h is None or h.empty:
             return c[1] if c else None
         # ใช้ timezone จาก index ของ history เอง — หุ้นไทย (.BK) คนละโซนกับ NY
@@ -724,15 +726,26 @@ def analyze(ticker, cfg):
     confidence = abs(score) / max_score * 100 if max_score else 0
 
     atr_now = float(last["ATR"])
+
+    # ฐาน % รายวันต้องเป็น "ราคากระดานจริง" (ไม่ปรับปันผล) — df หลักเป็นราคาปรับ
+    # ซึ่งเหมาะกับอินดิเคเตอร์ แต่ทำให้ % ผิดในวัน ex-dividend ของตัวจ่ายปันผลถี่
+    sess_prev_val = float(prev["Close"])
+    try:
+        raw = tk.history(period="7d", interval="1d", auto_adjust=False)["Close"].dropna()
+        if len(raw) >= 2:
+            sess_prev_val = float(raw.iloc[-2])
+    except Exception:
+        pass
+
     fund = fundamentals(tk, price)
     result = {
         **fund,
         "ticker": ticker,
         "price": price,
-        "change_pct": (price / float(prev["Close"]) - 1) * 100,
+        "change_pct": (price / sess_prev_val - 1) * 100,
         # ราคาปิดของ session ก่อนหน้าราคาพาดหัว — เป็นฐานของ change_pct จริงๆ
         # (ต่างจาก prev_close ที่เป็น "ปิดล่าสุดที่จบแล้ว" ซึ่งนอกเวลาทำการจะเท่ากับ price)
-        "sess_prev": float(prev["Close"]),
+        "sess_prev": sess_prev_val,
         "rsi": rsi_now,
         "ema20": float(last["EMA20"]),
         "ema50": float(last["EMA50"]),
