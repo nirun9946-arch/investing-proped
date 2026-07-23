@@ -487,37 +487,6 @@ def live_quotes(tickers):
     return [_quote_cache[t][1] for t in tickers if t in _quote_cache]
 
 
-def overnight_ratio():
-    """การเคลื่อนของฟิวเจอร์ส Nasdaq/S&P ตั้งแต่ 20:00 น. NY (จุดที่หุ้นหยุดเทรดข้ามคืน)
-
-    ฟิวเจอร์สเทรดเกือบ 24 ชม. → ใช้เป็นตัวคูณประมาณราคาหุ้นช่วงที่ตลาดจริงพัก
-    (indicative price ไม่ใช่ราคาซื้อขายจริง) — คืน {'nq': {...}, 'es': {...}}
-    เฉพาะเมื่อฟิวเจอร์สยังมีแท่งสดไม่เกิน 30 นาที (ตลาดฟิวเจอร์สเปิดอยู่จริง)
-    """
-    out = {}
-    for key, sym in (("nq", "NQ=F"), ("es", "ES=F")):
-        try:
-            h = yf.Ticker(sym).history(period="2d", interval="5m", prepost=True)
-            if h is None or h.empty or h.index.tz is None:
-                continue
-            tz = h.index.tz
-            now_ny = pd.Timestamp.now(tz)
-            ref = now_ny.normalize() + pd.Timedelta(hours=20)   # 20:00 NY ล่าสุดที่ผ่านมาแล้ว
-            if ref > now_ny:
-                ref -= pd.Timedelta(days=1)
-            base_rows = h[h.index <= ref]
-            if base_rows.empty:
-                continue
-            base = float(base_rows["Close"].iloc[-1])
-            last = float(h["Close"].iloc[-1])
-            age_min = (now_ny - h.index[-1]).total_seconds() / 60
-            if base > 0 and age_min <= 30:
-                out[key] = {"ratio": last / base, "chg_pct": (last / base - 1) * 100}
-        except Exception:
-            continue
-    return out
-
-
 def detect_reversal(df):
     """สัญญาณกลับตัวหลังลงติดต่อกันหลายวัน (bottom reversal)
 

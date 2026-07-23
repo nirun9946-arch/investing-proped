@@ -1208,42 +1208,24 @@ function ohLineHtml(r, lq){
   const pv = priceView(r, lq);
   if(!pv.oh) return '';
   const o = pv.oh;
-  const icon = o.pre ? '🌅' : '🌙';
-  const label = o.pre ? ('ก่อนเปิดตลาด ('+gl('pre-market')+')') : ('หลังปิด/ข้ามคืน ('+gl('after-hours')+')');
   const pu = o.chg >= 0;
   const ref = (r && r.price != null) ? ` · ราคาปิด session <b>${fmt(r.price)}</b>` : '';
-  // ดีลเก่าเกิน 1 ชม. = ตลาดพักช่วงข้ามคืน — ถ้าฟิวเจอร์สยังเปิด ใช้คำนวณ
-  // "ราคาประมาณการสด 24 ชม." (indicative) ให้ ไม่งั้นบอกตรงๆ ว่าตลาดพัก
-  let stale = '';
+  let icon = o.pre ? '🌅' : '🌆';
+  let label = o.pre ? ('ก่อนเปิดตลาด ('+gl('pre-market')+')') : ('หลังปิดตลาด ('+gl('after-hours')+')');
+  let tail = '';
+  // ดีลเก่าเกิน 1 ชม. = after-hours จบแล้ว → เข้าสู่ช่วง "โอเวอร์ไนท์"
+  // แสดงราคานอกเวลาล่าสุดตามจริง (ไม่มีประมาณการ) พร้อมเวลาดีลสุดท้าย
   if(lq && lq.ts){
     const age = Date.now() - Date.parse(String(lq.ts).replace(' ', 'T'));
     if(isFinite(age) && age > 60*60*1000){
       const t = String(lq.ts).match(/\d{2}:\d{2}/);
-      // หุ้นเทค/ETF สายเทคอิงฟิวเจอร์ส Nasdaq · ตัวอื่น (รวม ETF ทอง/เงิน/ปันผล) อิง S&P
-      const TECH_ETFS = ['QQQ','QQQM','TQQQ','SMH','SOXX','SOXL','XLK','DRAM','CHPY'];
-      const isTech = r && (r.sector === 'Technology' ||
-        (r.sector === 'ETF' && TECH_ETFS.includes(r.ticker)));
-      const fut = overnightData
-        ? (isTech ? (overnightData.nq || overnightData.es) : (overnightData.es || overnightData.nq))
-        : null;
-      if(fut && fut.ratio){
-        const est = o.price * fut.ratio;
-        const ec = (fut.ratio - 1) * 100;
-        const eu = ec >= 0;
-        const which = (isTech && overnightData.nq) ? 'Nasdaq' : 'S&P 500';
-        stale = `<br><span class="conf" style="margin-left:0">🌃 ประมาณการตอนนี้ ` +
-          `(อิงฟิวเจอร์ส ${which} ที่เทรดอยู่): <b style="color:var(--text)">${fmt(est)}</b> ` +
-          `<span class="${eu?'up':'down'}">${eu?'+':''}${fmt(ec)}%</span> จากดีลสุดท้าย ${t?t[0]:''} น. NY · ` +
-          `อัปเดตสดทุก 30 วิ — ตัวเลขประมาณ ไม่ใช่ราคาซื้อขายจริง</span>`;
-      } else {
-        stale = `<br><span class="conf" style="margin-left:0">⏸ ดีลสุดท้าย ${t?t[0]:''} น. NY — ` +
-          `ตลาดพักข้ามคืน ราคาจะขยับอีกทีช่วง pre-market (~บ่ายสามไทย) · ` +
-          `ระหว่างนี้ดูทิศทางจากฟิวเจอร์ส Nasdaq/S&P ที่แถบบนได้</span>`;
-      }
+      icon = '🌃'; label = 'โอเวอร์ไนท์';
+      tail = `<br><span class="conf" style="margin-left:0">ดีลสุดท้าย ${t?t[0]:''} น. NY — ` +
+        `ตลาดพักอยู่ ราคาจะขยับอีกทีช่วง pre-market (~บ่ายสามไทย)</span>`;
     }
   }
   return `<div class="ext">${icon} ${label}: <b>${fmt(o.price)}</b> ` +
-    `<span class="${pu?'up':'down'}">${pu?'+':''}${fmt(o.chg)}%</span>${ref}${stale}</div>`;
+    `<span class="${pu?'up':'down'}">${pu?'+':''}${fmt(o.chg)}%</span>${ref}${tail}</div>`;
 }
 
 // ===== กราฟคนติดดอย: Volume Profile แนวนอน แดง=เหนือราคา(ติดดอย) เขียว=ใต้ราคา(กำไร) =====
@@ -2354,31 +2336,11 @@ function quotePollMs(){
   const ms = usMarketState();
   return (ms==='REGULAR'||ms==='PRE'||ms==='POST') ? 15000 : 30000;
 }
-// ===== ราคาประมาณการข้ามคืนจากฟิวเจอร์ส (ช่วง 20:00-04:00 NY ที่หุ้นพักจริง) =====
-let overnightData = null;
-async function loadOvernight(){
-  const st = usMarketState();
-  if(st !== 'CLOSED' && st !== 'PREPRE'){ overnightData = null; return; }
-  try{
-    const j = await (await fetchWithTimeout('/api/overnight', 30000)).json();
-    overnightData = (j && j.ok && (j.nq || j.es)) ? j : null;
-  }catch(e){ return; }
-  // ได้ตัวเลขใหม่ → อัปเดตบรรทัดข้ามคืนบนการ์ดทันที
-  Object.keys(results).forEach(t => {
-    const el = document.getElementById('oh-' + t);
-    if(el && results[t] && !results[t].error){
-      const nh = ohLineHtml(results[t], liveQuotes[t]);
-      if(el.innerHTML !== nh) el.innerHTML = nh;
-    }
-  });
-}
-
 let _quoteTimer = null;
 let _lastMktState = null;
 async function scheduleQuotePoll(immediate){
   if(_quoteTimer){ clearTimeout(_quoteTimer); _quoteTimer = null; }
   if(immediate) await pollQuotes();
-  loadOvernight();                  // ประมาณการข้ามคืนเริ่มทำงานทันที ไม่รอรอบแรก
   const tick = async ()=>{
     // ข้ามช่วงตลาด (เช่น ข้ามคืน → pre-market ตอน ~15:00 น. ไทย) → วาดการ์ดใหม่
     // ให้ป้าย 🌙/🌅/🟢 และบรรทัดราคานอกเวลาเปลี่ยนเองโดยไม่ต้องกดสแกน
@@ -2392,7 +2354,6 @@ async function scheduleQuotePoll(immediate){
     _lastMktState = stNow;
     await pollQuotes();
     loadMarket(true);             // แถบตลาดโลกอัปเดตรอบเดียวกับราคาหุ้น
-    loadOvernight();              // ราคาประมาณการข้ามคืน (ทำงานเฉพาะช่วงตลาดพัก)
     renderSummary();
     _quoteTimer = setTimeout(tick, quotePollMs());
   };
