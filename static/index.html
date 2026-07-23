@@ -1179,7 +1179,7 @@ function glossify(txt){
 // ทำให้เลข % เว่อร์ (รวมการวิ่งทั้งวัน + after-hours) — ตอนนี้พาดหัว = ราคาปิด session
 // จริง + % ของ session (ตรงกับ Google/โบรก) ส่วนนอกเวลาเป็นบรรทัดรอง วัด % จากราคาปิด
 function priceView(r, lq){
-  const st = r ? r.market_state : null;
+  const st = effMarketState(r);
   const reg = (st === 'REGULAR' || !st);
   if(reg){
     // ตลาดเปิด/ไม่ทราบสถานะ: ราคาสดคือความจริง
@@ -1191,8 +1191,10 @@ function priceView(r, lq){
   const base = r ? r.price : null;
   // เฉพาะ PRE เท่านั้นที่เป็น pre-market จริง (4:00-9:30 น. นิวยอร์ก)
   // PREPRE = กลางดึกก่อนถึงเวลา pre-market → ราคาล่าสุดคือ after-hours ของเมื่อคืน
-  // ถ้าจะเรียกว่า pre-market ต้องมีราคา pre จริงด้วย ไม่งั้นถือเป็นราคาข้ามคืน
-  const isPre = (st === 'PRE') && !(r && r.pre_price == null && r.post_price != null);
+  // ป้าย 🌅 ต้องมีดีล pre จริงรองรับ: มี pre_price จาก Yahoo หรือราคาสดที่เพิ่งเทรดไม่เกิน 15 นาที
+  const freshTick = lq && lq.ts &&
+    (Date.now() - Date.parse(String(lq.ts).replace(' ', 'T'))) < 15*60*1000;
+  const isPre = (st === 'PRE') && ((r && r.pre_price != null) || freshTick);
   const ohRaw = lq ? lq.price : (r ? (isPre ? r.pre_price : r.post_price) : null);
   let oh = null;
   // ราคานอกเวลา วัด % จากราคาปิด session — ไม่ปนกับการวิ่งของ session
@@ -1380,7 +1382,8 @@ function card(r){
   const mktMap = {REGULAR:['🟢 ตลาดเปิด','open'], CLOSED:['🌙 ตลาดปิด',''],
     PRE:['🌅 ก่อนเปิดตลาด',''], PREPRE:['🌙 ตลาดปิด',''],
     POST:['🌆 หลังปิดตลาด',''], POSTPOST:['🌆 หลังปิดตลาด','']};
-  const mk = mktMap[r.market_state] || (r.market_state ? ['🌙 ตลาดปิด',''] : null);
+  const effSt = effMarketState(r);
+  const mk = mktMap[effSt] || (effSt ? ['🌙 ตลาดปิด',''] : null);
   const mktTag = mk ? `<span class="mkt ${mk[1]}">${mk[0]}</span>` : '';
 
   const vClassMap = {'ถูก':'vl-cheap','เหมาะสม':'vl-fair','ค่อนข้างแพง':'vl-exp','แพง':'vl-vexp'};
@@ -1789,7 +1792,8 @@ function renderSummary(){
   const sell = rs.filter(r=>r.verdict.includes('SELL')).length;
   const hold = rs.length - buy - sell;
   const mkLabelMap = {REGULAR:'🟢 ตลาดสหรัฐเปิด', PRE:'🌅 ก่อนเปิดตลาด (pre-market)',
-    POST:'🌆 หลังปิดตลาด (after-hours)', CLOSED:'🌙 ตลาดสหรัฐปิด'};
+    POST:'🌆 หลังปิดตลาด (after-hours)', CLOSED:'🌙 ตลาดสหรัฐปิด — ทอง/คริปโตยังวิ่ง',
+    PREPRE:'🌙 ข้ามคืน รอ pre-market — ทอง/คริปโตยังวิ่ง'};
   const ms = usMarketState();
   const mkLabel = mkLabelMap[ms] || '';
   const secs = Math.round(quotePollMs()/1000);
@@ -2277,7 +2281,36 @@ async function pollQuotes(){
 }
 
 // สถานะตลาดรวมของ US ในพอร์ต (ใช้ตั้งความถี่ poll + ป้ายบอกสถานะ)
+// สถานะตลาดสหรัฐจากนาฬิกาจริงโซน New York (Intl จัดการ DST ให้เอง) —
+// ป้าย/ความถี่ poll จึงเปลี่ยนเองทันทีเมื่อข้ามช่วงเวลา ไม่ต้องรอสแกนใหม่
+function usClockState(){
+  try{
+    const p = new Intl.DateTimeFormat('en-US', {timeZone:'America/New_York',
+      hour12:false, weekday:'short', hour:'numeric', minute:'numeric'}).formatToParts(new Date());
+    const g = t => (p.find(x=>x.type===t)||{}).value;
+    const wd = g('weekday');
+    let h = parseInt(g('hour'),10); if(h===24) h=0;
+    const hm = h*60 + parseInt(g('minute'),10);
+    if(wd==='Sat'||wd==='Sun') return 'CLOSED';
+    if(hm < 240) return 'PREPRE';    // เที่ยงคืน-04:00 = ข้ามคืน
+    if(hm < 570) return 'PRE';       // 04:00-09:30 = pre-market
+    if(hm < 960) return 'REGULAR';   // 09:30-16:00 = ตลาดเปิด
+    if(hm < 1200) return 'POST';     // 16:00-20:00 = after-hours
+    return 'CLOSED';                 // 20:00-เที่ยงคืน
+  }catch(e){ return null; }
+}
+
+// สถานะที่ใช้แสดง/คำนวณของหุ้นแต่ละตัว — หุ้นไทย (.BK) ใช้โซนเวลาตัวเองจาก analyze,
+// หุ้นสหรัฐใช้นาฬิกาจริง (สดกว่า market_state ที่ค้างมาตั้งแต่ตอนสแกน)
+function effMarketState(r){
+  if(!r) return null;
+  if(/\.BK$/i.test(r.ticker||'')) return r.market_state;
+  return usClockState() || r.market_state;
+}
+
 function usMarketState(){
+  const clock = usClockState();
+  if(clock) return clock;
   const st = Object.values(results).map(r=>r && r.market_state).filter(Boolean);
   if(st.includes('REGULAR')) return 'REGULAR';
   if(st.includes('PRE')) return 'PRE';
@@ -2285,17 +2318,23 @@ function usMarketState(){
   if(st.length) return 'CLOSED';
   return null;
 }
-// ตลาดคึก (เปิด/pre/post) → poll ถี่ 15 วิ ; ตลาดปิดสนิท → 60 วิ (ประหยัดแรม/กัน rate-limit)
+// ตลาดคึก (เปิด/pre/post) → poll ถี่ 15 วิ ; นอกเวลา → 30 วิ (ยังตามราคาข้ามคืน/รอ pre เปิด)
 // หมายเหตุ: server แคชราคา 20 วิ อยู่แล้ว ยิงถี่กว่านั้นจะได้ค่าแคช ไม่ไปกวน Yahoo เพิ่ม
 function quotePollMs(){
   const ms = usMarketState();
-  return (ms==='REGULAR'||ms==='PRE'||ms==='POST') ? 15000 : 60000;
+  return (ms==='REGULAR'||ms==='PRE'||ms==='POST') ? 15000 : 30000;
 }
 let _quoteTimer = null;
+let _lastMktState = null;
 async function scheduleQuotePoll(immediate){
   if(_quoteTimer){ clearTimeout(_quoteTimer); _quoteTimer = null; }
   if(immediate) await pollQuotes();
   const tick = async ()=>{
+    // ข้ามช่วงตลาด (เช่น ข้ามคืน → pre-market ตอน ~15:00 น. ไทย) → วาดการ์ดใหม่
+    // ให้ป้าย 🌙/🌅/🟢 และบรรทัดราคานอกเวลาเปลี่ยนเองโดยไม่ต้องกดสแกน
+    const stNow = usMarketState();
+    if(_lastMktState && stNow !== _lastMktState) render();
+    _lastMktState = stNow;
     await pollQuotes();
     loadMarket(true);             // แถบตลาดโลกอัปเดตรอบเดียวกับราคาหุ้น
     renderSummary();
@@ -2304,8 +2343,9 @@ async function scheduleQuotePoll(immediate){
   _quoteTimer = setTimeout(tick, quotePollMs());
 }
 
-// ตลาดโลกเดินต่อแม้อยู่หน้าอื่น (ข่าว/วงใน/ปฏิทิน) — ทอง/น้ำมัน/คริปโตไม่ได้หยุดตามหน้าจอ
-setInterval(()=>loadMarket(true), 60000);
+// ตลาดโลกเดินต่อตลอดแม้ตลาดหุ้นปิด — ทอง/น้ำมันเทรดเกือบ 24 ชม. คริปโต 24 ชม.
+// จึง poll ถี่ 15 วิเสมอ (server แคช 20 วิ กันยิง Yahoo ถี่เกิน)
+setInterval(()=>loadMarket(true), 15000);
 // กลับมาที่แท็บ → ดึงใหม่ทันที ไม่ต้องรอรอบถัดไป
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) loadMarket(); });
 
