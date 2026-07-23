@@ -279,6 +279,23 @@ def api_market():
 
 _MARKET_META = {s[0]: (s[1], s[2], s[3]) for s in MARKET_SYMBOLS}
 
+_overnight_cache = {"ts": 0.0, "data": None}
+
+
+@app.route("/api/overnight")
+def api_overnight():
+    """ตัวคูณประมาณราคาหุ้นช่วงข้ามคืนจากฟิวเจอร์ส — สำหรับช่วง 20:00-04:00 NY ที่หุ้นพักจริง"""
+    import time as _t
+    now = _t.time()
+    if _overnight_cache["data"] is not None and now - _overnight_cache["ts"] < 30:
+        return jsonify(_overnight_cache["data"])
+    try:
+        data = {"ok": True, **core.overnight_ratio()}
+    except Exception as e:
+        data = {"ok": False, "error": str(e)[:100]}
+    _overnight_cache["ts"], _overnight_cache["data"] = now, data
+    return jsonify(data)
+
 
 @app.route("/api/market-ta/<path:symbol>")
 def api_market_ta(symbol):
