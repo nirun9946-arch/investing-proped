@@ -329,6 +329,7 @@
   .cal-body{flex:1;min-width:200px;line-height:1.5}
   .cal-days{flex:none;font-size:.85rem;font-weight:700;color:var(--muted)}
   .cal-days.soon{color:var(--red)}
+  .cal-time{margin-top:4px;font-size:.78rem;font-weight:600;color:var(--blue)}
   #mktbar{display:flex;gap:10px;padding:14px 22px 0;flex-wrap:wrap}
   .mk-item{flex:1;min-width:150px;display:flex;align-items:center;gap:10px;
     background:linear-gradient(135deg,rgba(30,41,59,.62),rgba(15,23,42,.4));
@@ -2167,10 +2168,12 @@ function calItem(ev){
   else if(ev.days === 1){ daysTxt = 'พรุ่งนี้'; soon = true; }
   else if(ev.days <= 7){ daysTxt = 'อีก ' + ev.days + ' วัน'; soon = true; }
   else { daysTxt = 'อีก ' + ev.days + ' วัน'; }
+  const timeLine = ev.time_th
+    ? `<div class="cal-time">🕐 ${escHtml(ev.time_th)}</div>` : '';
   return `<div class="cal-item">
     <div class="cal-date"><div class="cd-day">${dayNum}</div><div class="cd-mon">${mon}</div></div>
     ${badge}${tick}
-    <div class="cal-body">${ev.title}</div>
+    <div class="cal-body">${ev.title}${timeLine}</div>
     <div class="cal-days ${soon?'soon':''}">${daysTxt}</div>
   </div>`;
 }

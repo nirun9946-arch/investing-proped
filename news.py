@@ -729,6 +729,21 @@ def _next_earnings_date(t):
         return None
 
 
+def _thai_time(date_str, hour_et, minute_et=0):
+    """แปลงเวลานิวยอร์ก → เวลาไทย (pytz จัดการ DST ให้เอง — หน้าหนาว/หน้าร้อนต่างกัน 1 ชม.)
+    คืน (เวลา 'HH:MM', ข้ามไปวันถัดไปไหม) หรือ (None, False) ถ้าแปลงไม่ได้"""
+    try:
+        import pytz
+        from datetime import datetime as dtm
+        ny = pytz.timezone("America/New_York")
+        d = dtm.strptime(date_str, "%Y-%m-%d")
+        t = ny.localize(d.replace(hour=hour_et, minute=minute_et)) \
+              .astimezone(pytz.timezone("Asia/Bangkok"))
+        return t.strftime("%H:%M"), t.date() > d.date()
+    except Exception:
+        return None, False
+
+
 def get_calendar(tickers, force=False):
     from datetime import date, datetime as dtm
     today = date.today()
@@ -744,22 +759,30 @@ def get_calendar(tickers, force=False):
         title = "ประชุม Fed (FOMC) — แถลงผลดอกเบี้ยวันที่สอง"
         if proj:
             title += " พร้อม Dot Plot คาดการณ์เศรษฐกิจ"
+        # Fed แถลงผล 14:00 น. NY ของวันที่สอง → เช้ามืดวันถัดไปตามเวลาไทย
+        tt, nextday = _thai_time(end, 14, 0)
+        time_th = (f"แถลงผล {tt} น. ไทย" + (" (เช้ามืดคืนวันประชุม)" if nextday else "")) if tt else None
         events.append({"date": start, "date_end": end, "type": "fed",
-                       "ticker": None, "title": title,
+                       "ticker": None, "title": title, "time_th": time_th,
                        "days": (start_d - today).days})
 
     # 2) ดัชนีเศรษฐกิจสหรัฐที่กระทบตลาด
+    # ดัชนีเศรษฐกิจประกาศ 8:30 น. NY → คำนวณเวลาไทยจริงของแต่ละวัน (DST ทำให้ต่างกันได้ 1 ชม.)
     for d in _nfp_dates():
+        tt, _ = _thai_time(str(d), 8, 30)
         events.append({"date": str(d), "date_end": None, "type": "econ", "subtype": "nfp",
                        "ticker": None,
-                       "title": "ตัวเลขจ้างงานสหรัฐ (Nonfarm Payrolls) — 8:30 เช้าสหรัฐ (~19:30-20:30 น. ไทย)",
+                       "title": "ตัวเลขจ้างงานสหรัฐ (Nonfarm Payrolls)",
+                       "time_th": f"ประกาศ {tt} น. ไทย" if tt else None,
                        "days": (d - today).days})
     for ds in CPI_RELEASES_2026:
         d = dtm.strptime(ds, "%Y-%m-%d").date()
         if d >= today:
+            tt, _ = _thai_time(ds, 8, 30)
             events.append({"date": ds, "date_end": None, "type": "econ", "subtype": "cpi",
                            "ticker": None,
-                           "title": "เงินเฟ้อสหรัฐ CPI — 8:30 เช้าสหรัฐ (~19:30-20:30 น. ไทย)",
+                           "title": "เงินเฟ้อสหรัฐ CPI",
+                           "time_th": f"ประกาศ {tt} น. ไทย" if tt else None,
                            "days": (d - today).days})
 
     # 3) งบไตรมาสของหุ้นใน watchlist (แคชรายตัว 12 ชม.)
@@ -774,9 +797,15 @@ def get_calendar(tickers, force=False):
         d = _earn_cache.get(t, (0, None))[1]
         if d:
             d_date = dtm.strptime(d, "%Y-%m-%d").date()
+            # งบไตรมาสไม่มีเวลาแน่นอนจาก Yahoo — บอกกรอบเวลาไทยของสองช่วงมาตรฐาน
+            bmo, _ = _thai_time(d, 8, 0)    # ก่อนตลาดเปิด (BMO ~8:00 NY)
+            amc, _ = _thai_time(d, 16, 30)  # หลังตลาดปิด (AMC ~16:30 NY) → เช้ามืดไทยวันถัดไป
+            time_th = (f"ก่อนเปิดตลาด ~{bmo} น. หรือหลังปิด ~{amc} น. ไทย (เช้ามืดวันถัดไป)"
+                       if bmo and amc else None)
             events.append({"date": d, "date_end": None, "type": "earnings",
                            "ticker": t,
                            "title": f"ประกาศงบไตรมาส {t} (กำหนดคาดการณ์จาก Yahoo)",
+                           "time_th": time_th,
                            "days": (d_date - today).days})
 
     events.sort(key=lambda e: e["date"])
