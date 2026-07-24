@@ -367,6 +367,12 @@
     transition:all .18s ease}
   .sb-btn:hover{border-color:var(--purple-hi);color:var(--text)}
   .sb-btn.on{background:var(--purple-bg);border-color:var(--purple-hi);color:var(--purple-hi)}
+  /* หัวข้อกลุ่มหมวดธีม — กินเต็มแถวของ grid */
+  .grp-head{grid-column:1/-1;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+    font-size:1.05rem;font-weight:800;padding:10px 6px 8px;margin-top:8px;
+    border-bottom:1px solid rgba(115,66,226,.4)}
+  .grp-head:first-child{margin-top:0}
+  .grp-avg{font-size:.8rem;font-weight:700;font-variant-numeric:tabular-nums}
   #hero{margin:18px 22px 0;border-radius:var(--r-card);position:relative;overflow:hidden;
     background:linear-gradient(120deg,#1a1035 0%,#0f172a 52%,#131f36 100%);color:#fff;
     display:flex;align-items:center;gap:24px;padding:36px 38px;flex-wrap:wrap;
@@ -773,6 +779,7 @@
   <button class="sb-btn" data-sort="reversal" onclick="setSort('reversal')">🔄 สัญญาณกลับตัว</button>
   <button class="sb-btn" data-sort="rsi" onclick="setSort('rsi')">📊 RSI</button>
   <button class="sb-btn" data-sort="name" onclick="setSort('name')">🔤 ชื่อ</button>
+  <button class="sb-btn" data-sort="theme" onclick="setSort('theme')">🗂 หมวดธีม</button>
 </div>
 <div id="grid"></div>
 
@@ -1822,6 +1829,47 @@ function renderSummary(){
 
 let sortMode = localStorage.getItem('sortMode') || 'score';
 
+// ===== หมวดธีมการลงทุน — จัดกลุ่มพอร์ตตามธีมที่นักลงทุนใช้จริง =====
+// หุ้นที่ไม่อยู่ในลิสต์จะตกไปตามกลุ่มธุรกิจ (sector) อัตโนมัติ
+const THEME_MAP = {
+  // โลหะมีค่า
+  SLV:'โลหะมีค่า', GLD:'โลหะมีค่า', IAU:'โลหะมีค่า', SLVR:'โลหะมีค่า',
+  GDX:'โลหะมีค่า', WPM:'โลหะมีค่า', PAAS:'โลหะมีค่า', AG:'โลหะมีค่า',
+  // ชิปความจำ / สตอเรจ
+  MU:'ชิปความจำ', WDC:'ชิปความจำ', STX:'ชิปความจำ', SNDK:'ชิปความจำ',
+  DRAM:'ชิปความจำ', KIOXY:'ชิปความจำ',
+  // คอขวด AI — ชิ้นส่วนที่ขาดตลาด (ชิป AI, ออปติก, วัสดุตั้งต้น)
+  NVDA:'คอขวด AI', LITE:'คอขวด AI', AXTI:'คอขวด AI', COHR:'คอขวด AI',
+  ALAB:'คอขวด AI', CRDO:'คอขวด AI', AVGO:'คอขวด AI', TSM:'คอขวด AI',
+  VRT:'คอขวด AI', SMCI:'คอขวด AI',
+  // ไฮเปอร์สเกล / ดาต้าเซ็นเตอร์ AI
+  IREN:'ไฮเปอร์สเกล/ดาต้าเซ็นเตอร์', APLD:'ไฮเปอร์สเกล/ดาต้าเซ็นเตอร์',
+  CRWV:'ไฮเปอร์สเกล/ดาต้าเซ็นเตอร์', MSFT:'ไฮเปอร์สเกล/ดาต้าเซ็นเตอร์',
+  GOOGL:'ไฮเปอร์สเกล/ดาต้าเซ็นเตอร์', AMZN:'ไฮเปอร์สเกล/ดาต้าเซ็นเตอร์',
+  META:'ไฮเปอร์สเกล/ดาต้าเซ็นเตอร์', ORCL:'ไฮเปอร์สเกล/ดาต้าเซ็นเตอร์',
+  // ชิปประมวลผล
+  INTC:'ชิปประมวลผล', AMD:'ชิปประมวลผล', QCOM:'ชิปประมวลผล', ARM:'ชิปประมวลผล',
+  // ซอฟต์แวร์ AI
+  PLTR:'ซอฟต์แวร์ AI', SNOW:'ซอฟต์แวร์ AI', NOW:'ซอฟต์แวร์ AI',
+  // อวกาศ / ดาวเทียม
+  RKLB:'อวกาศ/ดาวเทียม', ASTS:'อวกาศ/ดาวเทียม', LUNR:'อวกาศ/ดาวเทียม',
+  // ETF ตลาดรวม
+  QQQM:'ETF ตลาดรวม', QQQ:'ETF ตลาดรวม', CHPY:'ETF ตลาดรวม',
+  VOO:'ETF ตลาดรวม', SPY:'ETF ตลาดรวม',
+};
+const THEME_ICONS = {
+  'โลหะมีค่า':'🥈', 'ชิปความจำ':'💾', 'คอขวด AI':'🔗',
+  'ไฮเปอร์สเกล/ดาต้าเซ็นเตอร์':'🏗', 'ชิปประมวลผล':'🧠', 'ซอฟต์แวร์ AI':'🤖',
+  'อวกาศ/ดาวเทียม':'🛰', 'ETF ตลาดรวม':'📦',
+};
+
+function themeOf(r){
+  if(!r || r.error) return 'อื่นๆ';
+  if(THEME_MAP[r.ticker]) return THEME_MAP[r.ticker];
+  const s = SECTORS[r.sector];
+  return s ? s.th : 'อื่นๆ';
+}
+
 function setSort(mode){
   sortMode = mode;
   localStorage.setItem('sortMode', mode);
@@ -1851,7 +1899,27 @@ function sortResults(list){
 function render(){
   const all = Object.values(results);
   const order = sortResults(all);
-  grid.innerHTML = order.map(card).join('');
+  if(sortMode === 'theme' && all.length){
+    // จัดกลุ่มตามหมวดธีม — ในกลุ่มเรียงตามคะแนน, กลุ่มใหญ่ขึ้นก่อน
+    const groups = {};
+    order.forEach(r => { const g = themeOf(r); (groups[g] = groups[g] || []).push(r); });
+    const names = Object.keys(groups).sort((a,b) =>
+      groups[b].length - groups[a].length || a.localeCompare(b, 'th'));
+    grid.innerHTML = names.map(g => {
+      const rs = groups[g];
+      const chgs = rs.map(r => (liveQuotes[r.ticker]?.chg ?? r.change_pct))
+                     .filter(v => v != null && isFinite(v));
+      const avg = chgs.length ? chgs.reduce((a,b)=>a+b,0)/chgs.length : null;
+      const up = (avg ?? 0) >= 0;
+      const avgTxt = avg != null
+        ? ` <span class="grp-avg ${up?'up':'down'}">เฉลี่ยวันนี้ ${up?'+':''}${fmt(avg)}%</span>` : '';
+      return `<div class="grp-head">${THEME_ICONS[g]||'🗂'} ${escHtml(g)}` +
+        ` <span class="conf">${rs.length} ตัว</span>${avgTxt}</div>` +
+        rs.map(card).join('');
+    }).join('');
+  } else {
+    grid.innerHTML = order.map(card).join('');
+  }
   const sb = document.getElementById('sortbar');
   if(sb){
     sb.style.display = all.length > 1 ? 'flex' : 'none';
