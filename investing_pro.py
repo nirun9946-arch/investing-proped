@@ -89,9 +89,12 @@ def atr(df, period=14):
 def volume_profile(df, lookback=120, bins=40):
     """Volume Profile: POC, Value Area 70%, HVN/LVN + สถิติพฤติกรรมราคาที่โซน POC"""
     import numpy as np
-    data = df.tail(lookback)
+    # กันแถวข้อมูลว่างจาก Yahoo ซ้ำอีกชั้น — ถ้ามี NaN หลุดมา int() จะพังทั้งการวิเคราะห์
+    data = df.dropna(subset=["Low", "High", "Volume"]).tail(lookback)
+    if len(data) < 40:
+        return None
     lo, hi = float(data["Low"].min()), float(data["High"].max())
-    if hi <= lo or len(data) < 40:
+    if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
         return None
 
     edges = np.linspace(lo, hi, bins + 1)
@@ -279,6 +282,11 @@ def support_resistance(df, lookback=60, window=5):
 def fetch(ticker, period="1y", interval="1d"):
     tk = yf.Ticker(ticker)
     df = tk.history(period=period, interval=interval, auto_adjust=True)
+    # Yahoo แถมแถวเปล่า (NaN) มาเป็นครั้งคราว เช่นวันหยุดพิเศษหรือช่วงข้อมูลกำลังอัปเดต
+    # ถ้าไม่ตัดทิ้ง จะทำให้การคำนวณที่แปลงเป็นจำนวนเต็ม (Volume Profile) พังทั้งการ์ด
+    if df is not None and not df.empty:
+        df = df.dropna(subset=["Open", "High", "Low", "Close"])
+        df = df[df["Close"] > 0]
     # เกณฑ์ขั้นต่ำ 15 แท่ง — พอคำนวณ RSI/EMA พื้นฐาน และรองรับหุ้นเพิ่งเข้าตลาดใหม่
     # (อินดิเคเตอร์ระยะยาว เช่น EMA200, Volume Profile จะข้ามเองถ้าข้อมูลไม่พอ)
     if df is None or df.empty or len(df) < 15:
@@ -311,6 +319,8 @@ def prev_close(ticker, tk=None):
         # auto_adjust=False = ราคากระดานจริง — ถ้าใช้ราคาปรับปันผล ตัวที่จ่ายปันผลถี่
         # (เช่น covered-call ETF) จะได้ฐาน % ผิดในวัน ex-dividend
         h = tk.history(period="5d", interval="1d", auto_adjust=False)
+        if h is not None and not h.empty:
+            h = h.dropna(subset=["Close"])     # กันแถวเปล่าจาก Yahoo → ไม่งั้นได้ NaN
         if h is None or h.empty:
             return c[1] if c else None
         # ใช้ timezone จาก index ของ history เอง — หุ้นไทย (.BK) คนละโซนกับ NY
@@ -701,6 +711,7 @@ def analyze(ticker, cfg):
     sess_prev_val = float(prev["Close"])
     try:
         raw = tk.history(period="7d", interval="1d", auto_adjust=False)["Close"].dropna()
+        raw = raw[raw > 0]
         if len(raw) >= 2:
             sess_prev_val = float(raw.iloc[-2])
     except Exception:

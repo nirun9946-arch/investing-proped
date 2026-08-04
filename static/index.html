@@ -1944,14 +1944,30 @@ async function scanAll(){
   summary.innerHTML = '';
   liveQuotes = {};                 // ล้างราคาสดเก่าของพอร์ตก่อนหน้า
   const quotesP = fetchQuotes();   // ยิงราคาสดขนานไปกับการวิเคราะห์ ให้มาทันตอนเรนเดอร์ครั้งสุดท้าย
-  await Promise.all(list.map(async t=>{
-    try{
-      const r = await (await fetch('/api/analyze/'+encodeURIComponent(t))).json();
-      results[t] = r;
-    }catch(e){ results[t] = {ticker:t, error:'โหลดไม่สำเร็จ'}; }
-    const sk = document.getElementById('sk-'+CSS.escape(t).replace(/\\/g,''));
-    render();
-  }));
+  // ทยอยโหลดทีละ 4 ตัว + ลองซ้ำอัตโนมัติ 1 ครั้ง
+  // (เดิมยิงพร้อมกันทั้ง 15 ตัว เครื่องแรมน้อยรับไม่ไหว การ์ดขึ้น "โหลดไม่สำเร็จ" ยกแผง)
+  const queue = list.slice();
+  const analyzeOne = async (t)=>{
+    for(let attempt = 0; attempt < 2; attempt++){
+      try{
+        const r = await (await fetchWithTimeout('/api/analyze/'+encodeURIComponent(t), 120000)).json();
+        results[t] = r;
+        return;
+      }catch(e){
+        if(attempt === 0) await new Promise(r=>setTimeout(r, 1500));   // พักแล้วลองใหม่
+        else results[t] = {ticker:t, error:'โหลดไม่สำเร็จ — กด "สแกนทั้งหมด" อีกครั้ง'};
+      }
+    }
+  };
+  const worker = async ()=>{
+    while(queue.length){
+      const t = queue.shift();
+      if(t == null) break;
+      await analyzeOne(t);
+      render();
+    }
+  };
+  await Promise.all(Array.from({length: Math.min(4, list.length)}, worker));
   await quotesP;                   // รอราคาสดให้ครบก่อนเรนเดอร์รอบสุดท้าย → การ์ดขึ้นราคาสดตั้งแต่แรก ไม่กระโดด
   render();
   btn.disabled = false; btn.textContent = '🔄 สแกนทั้งหมด';

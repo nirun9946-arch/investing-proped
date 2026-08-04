@@ -26,6 +26,34 @@ import news as news_mod
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, static_folder=os.path.join(BASE_DIR, "static"))
 
+
+# ----------------------------------------------------------------------
+# กัน NaN/Infinity หลุดไปกับ JSON — Python เขียน NaN ได้แต่ JavaScript อ่านไม่ได้
+# ถ้าหลุดไปแม้ตัวเดียว เบราว์เซอร์จะ parse ทั้งก้อนไม่ผ่าน = การ์ดขึ้น "โหลดไม่สำเร็จ" ยกแผง
+# (curl/Python ทดสอบแล้วผ่าน เพราะยอมรับ NaN — บั๊กแบบนี้จึงหลุดง่าย จึงกันไว้ที่ชั้นนี้)
+# ----------------------------------------------------------------------
+def _json_safe(o):
+    import math
+    if isinstance(o, float):
+        return None if (math.isnan(o) or math.isinf(o)) else o
+    if isinstance(o, dict):
+        return {k: _json_safe(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_json_safe(v) for v in o]
+    return o
+
+
+try:
+    from flask.json.provider import DefaultJSONProvider
+
+    class _SafeJSON(DefaultJSONProvider):
+        def dumps(self, obj, **kw):
+            return super().dumps(_json_safe(obj), **kw)
+
+    app.json = _SafeJSON(app)
+except Exception:      # Flask รุ่นเก่าไม่มี provider API — ข้ามไป ยังมีการกันที่ต้นทางอยู่
+    pass
+
 # ----------------------------------------------------------------------
 # ระบบบัญชีผู้ใช้: watchlist/พอร์ตส่วนตัว ป้องกันด้วยรหัสผ่าน (PBKDF2 hash)
 # ----------------------------------------------------------------------
