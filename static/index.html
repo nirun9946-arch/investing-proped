@@ -1188,9 +1188,11 @@ function savePort(){
 }
 function updPortTotal(v){
   portTotal = parseFloat(v) || 0; savePort();
-  Object.keys(results).forEach(t=>{
-    const el = document.getElementById('alo-'+t);
-    if(el && results[t] && !results[t].error) el.innerHTML = allocOut(results[t]);
+  // วาดผลลัพธ์สัดส่วนใหม่ทุกจุด (การ์ด + หน้ารวมข้อมูล)
+  document.querySelectorAll('.alo-out[data-tk]').forEach(el=>{
+    const t = el.dataset.tk;
+    const r = (results[t] && !results[t].error) ? results[t] : (_stockPageData[t] || null);
+    if(r) el.innerHTML = allocOut(r);
   });
   renderOverview();
 }
@@ -1198,8 +1200,10 @@ function updPos(t, k, v){
   if(!positions[t]) positions[t] = {hold: 0, target: 10};
   positions[t][k] = parseFloat(v) || 0;
   savePort();
-  const el = document.getElementById('alo-'+t);
-  if(el && results[t] && !results[t].error) el.innerHTML = allocOut(results[t]);
+  // อัปเดตทุกจุดที่แสดงผลอยู่ (การ์ด + หน้ารวมข้อมูล อาจเปิดพร้อมกัน)
+  const r = (results[t] && !results[t].error) ? results[t] : (_stockPageData[t] || null);
+  if(r) document.querySelectorAll('.alo-out[data-tk="'+t+'"]')
+          .forEach(el => { el.innerHTML = allocOut(r); });
   renderOverview();
 }
 function allocOut(r){
@@ -1274,7 +1278,7 @@ function allocBlock(r){
     'onchange="updPos(\'' + t + '\',\'hold\',this.value)"> เป้า ' +
     '<input class="tgt" type="number" min="0" max="100" value="' + target + '" ' +
     'onchange="updPos(\'' + t + '\',\'target\',this.value)"> %</span></div>' +
-    '<div id="alo-' + t + '">' + allocOut(r) + '</div></div>';
+    '<div class="alo-out" data-tk="' + t + '">' + allocOut(r) + '</div></div>';
 }
 
 function toast(msg, ms){
@@ -1393,6 +1397,37 @@ function ohLineHtml(r, lq){
     `<span class="${pu?'up':'down'}">${pu?'+':''}${fmt(o.chg)}%</span>${ref}${tail}</div>`;
 }
 
+// ===== Volume Profile: โซนราคาที่ซื้อขายหนาแน่น (ใช้ทั้งในการ์ดและหน้ารวมข้อมูล) =====
+function vpBlockOf(r){
+  if(!r || !r.vp) return '';
+  const vp = r.vp;
+  const bars = vp.profile.map(b=>{
+    const here = Math.abs(b.p - r.price) <= vp.band/1.4;
+    return `<div class="vpbar ${b.v>=0.55?'hot':''} ${here?'here':''}" style="width:${Math.max(4,b.v*100)}%" title="${b.p.toFixed(2)}"></div>`;
+  }).join('');
+  let stat = '';
+  if(vp.touches > 0){
+    const bp = Math.round(vp.bounces/vp.touches*100);
+    stat = `📊 พฤติกรรมที่โซน POC (120 วัน): ราคาวิ่งเข้าโซน ${vp.touches} ครั้ง → เด้งกลับ ${vp.bounces} ครั้ง (${bp}%) · ทะลุผ่าน ${vp.breaks} ครั้ง`;
+  }
+  const pos = r.price > vp.vah ? `🟢 เหนือ ${gl('Value Area')}`
+            : r.price < vp.val ? `🔴 ใต้ ${gl('Value Area')}` : '⚪ ในค่ากลางตลาด';
+  return `<div class="vpbox">
+    <div class="vph">📐 ${gl('Volume Profile')} — โซนสำคัญอัตโนมัติ <span style="color:var(--muted);font-weight:400">(${pos})</span></div>
+    <div class="vpflex">
+      <div class="vpchart">${bars}</div>
+      <div class="vplv">
+        <div class="lvrow"><span>${gl('VAH')} (ขอบบน Value Area)</span><b class="down">${fmt(vp.vah)}</b></div>
+        <div class="lvrow"><span>${gl('POC')} (วอลุ่มหนาแน่นสุด)</span><b style="color:var(--blue)">${fmt(vp.poc)}</b></div>
+        <div class="lvrow"><span>${gl('VAL')} (ขอบล่าง Value Area)</span><b class="up">${fmt(vp.val)}</b></div>
+        ${vp.hvn.length?`<div class="lvrow"><span>${gl('HVN')} โซนวอลุ่มหนา</span><b>${vp.hvn.slice(-3).map(x=>fmt(x)).join(' · ')}</b></div>`:''}
+        ${vp.lvn.length?`<div class="lvrow"><span>${gl('LVN')} โซนวอลุ่มบาง</span><b>${vp.lvn.slice(-3).map(x=>fmt(x)).join(' · ')}</b></div>`:''}
+      </div>
+    </div>
+    ${stat?`<div class="vpstat">${stat}</div>`:''}
+  </div>`;
+}
+
 // ===== กราฟคนติดดอย: Volume Profile แนวนอน แดง=เหนือราคา(ติดดอย) เขียว=ใต้ราคา(กำไร) =====
 function trapBlock(r, price){
   const t = r.trapped;
@@ -1508,6 +1543,9 @@ function lookupTyped(){
 
 function openFund(t){ return openStock(t); }   // ชื่อเดิม — ยังเรียกได้
 
+// ผลวิเคราะห์ของหุ้นที่เปิดดูในหน้ารวมข้อมูล (อาจไม่อยู่ใน watchlist จึงไม่มีใน results)
+let _stockPageData = {};
+
 // หน้ารวมข้อมูลหุ้นตัวเดียว: เทคนิค + พื้นฐาน + คนติดดอย + ผู้ถือหุ้น + ข่าว + AI
 async function openStock(t){
   t = String(t).trim().toUpperCase();
@@ -1536,6 +1574,7 @@ async function openStock(t){
 
   const r = (ana && !ana.error) ? ana : {ticker:t};
   const j = (fun && fun.ok) ? fun : null;
+  if(ana && !ana.error) _stockPageData[t] = ana;   // ให้เครื่องคิดสัดส่วนใช้ได้แม้ไม่อยู่ใน watchlist
   const lq = liveQuotes[t];
   const pv = priceView(r, lq);
   const px = pv.price != null ? pv.price : (j ? j.price : null);
@@ -1636,10 +1675,23 @@ async function openStock(t){
         ${r.holders?`<div>${holdBlock(r)}</div>`:''}
       </div></div>`:''}
 
+    ${r.vp?`<div class="fd-sec">
+      <div class="fd-h">📐 Volume Profile — โซนราคาที่ตลาดซื้อขายหนาแน่น</div>
+      <div class="fd-hint">ใช้หาแนวรับ-แนวต้านจากวอลุ่มจริง ไม่ใช่จากเส้นที่ลากเอง</div>
+      ${vpBlockOf(r)}</div>`:''}
+
+    <div class="fd-sec" id="fdSmart-${t}"></div>
+
     ${sigs?`<div class="fd-sec">
       <div class="fd-h">📡 สัญญาณเทคนิคทั้งหมด</div>
       <div class="fd-hint">${(r.signals||[]).length} สัญญาณที่ระบบตรวจพบ</div>
-      <div class="sigs" style="border-top:none;padding-top:0">${sigs}</div></div>`:''}`;
+      <div class="sigs" style="border-top:none;padding-top:0">${sigs}</div></div>`:''}
+
+    <div class="fd-sec">
+      <div class="fd-h">💼 คำนวณสัดส่วนพอร์ต</div>
+      <div class="fd-hint">กรอกมูลค่าที่ถืออยู่ ระบบคำนวณว่าควรเติมอีกเท่าไรตามเป้าที่ตั้งไว้</div>
+      <div id="fdAlloc-${t}">${allocBlock(r)}</div>
+    </div>`;
   } else {
     techHtml = `<div class="fd-sec"><div class="fd-hint">
       ⚠️ วิเคราะห์เทคนิคไม่สำเร็จ${ana&&ana.error?' — '+escHtml(ana.error):''} (แสดงเฉพาะข้อมูลพื้นฐาน)</div></div>`;
@@ -1705,7 +1757,28 @@ async function openStock(t){
     <div class="fd-note">ℹ️ ข้อมูลจาก Yahoo Finance และ SEC · งบการเงินอัปเดตรายไตรมาส
       · คำอธิบายเป็นการตีความตัวเลขตามเกณฑ์ทั่วไป ใช้ประกอบการตัดสินใจ ไม่ใช่คำแนะนำการลงทุน</div>`;
 
-  loadStockNews(t);   // ข่าวโหลดตามหลัง ไม่หน่วงหน้าจอ
+  loadStockNews(t);    // ข่าวโหลดตามหลัง ไม่หน่วงหน้าจอ
+  loadStockSmart(t);   // สัญญาณเงินใหญ่ (สถาบัน/กองทุน/ผู้บริหาร)
+}
+
+// สัญญาณเงินใหญ่ของหุ้นตัวนี้ — ใช้ของที่โหลดไว้แล้วถ้ามี ไม่งั้นยิงเฉพาะตัวนี้
+async function loadStockSmart(t){
+  const el = document.getElementById('fdSmart-'+t);
+  if(!el) return;
+  const paint = () => {
+    const html = smartBlock(t);
+    if(!el.isConnected) return;
+    el.innerHTML = html
+      ? `<div class="fd-h">🔔 สัญญาณเงินใหญ่</div>
+         <div class="fd-hint">ความเคลื่อนไหวของสถาบัน/กองทุน/ผู้บริหาร (รายงาน 13F และ SEC Form 4)</div>${html}`
+      : '';
+  };
+  if(smartSignals[t]){ paint(); return; }
+  try{
+    const j = await (await fetchWithTimeout('/api/signals?tickers='+encodeURIComponent(t), 70000)).json();
+    (j.items || []).forEach(s => { smartSignals[s.ticker] = s; });
+    paint();
+  }catch(e){ if(el.isConnected) el.innerHTML = ''; }
 }
 
 // เพิ่มหุ้นเข้าวอทช์ลิสต์จากหน้ารวมข้อมูล
@@ -1800,6 +1873,7 @@ function secArt(r){
   return {art, tag};
 }
 
+let _sparkSeq = 0;
 function sparkSvg(r){
   const sp = r.spark;
   if(!Array.isArray(sp) || sp.length < 2 || sp.some(v => typeof v !== 'number' || !isFinite(v))) return '';
@@ -1811,7 +1885,9 @@ function sparkSvg(r){
   const chg = (sp[n-1] - sp[0]) / Math.abs(sp[0] || 1) * 100;
   const up = chg >= 0;
   const col = up ? 'var(--green)' : 'var(--red)';
-  const gid = 'sg-' + String(r.ticker).replace(/[^A-Za-z0-9]/g,'');
+  // id ต้องไม่ซ้ำ — การ์ดกับหน้ารวมข้อมูลอาจแสดงหุ้นตัวเดียวกันพร้อมกัน
+  // ถ้าซ้ำ SVG จะไปใช้ gradient ของอันแรก ทำให้สีพื้นกราฟเพี้ยน
+  const gid = 'sg-' + String(r.ticker).replace(/[^A-Za-z0-9]/g,'') + '-' + (++_sparkSeq);
   return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
     <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" style="stop-color:${col};stop-opacity:.26"/>
@@ -1888,35 +1964,7 @@ function card(r){
     </div>` : '';
 
   // Volume Profile: กราฟวอลุ่มจิ๋ว (แกนตั้ง=ราคา) + ระดับ POC/VA + สถิติโซน
-  let vpBlock = '';
-  if(r.vp){
-    const vp = r.vp;
-    const bars = vp.profile.map(b=>{
-      const isPoc = Math.abs(b.p - vp.poc) <= vp.band/1.4;
-      const here = Math.abs(b.p - r.price) <= vp.band/1.4;
-      return `<div class="vpbar ${b.v>=0.55?'hot':''} ${here?'here':''}" style="width:${Math.max(4,b.v*100)}%" title="${b.p.toFixed(2)}"></div>`;
-    }).join('');
-    let stat = '';
-    if(vp.touches > 0){
-      const bp = Math.round(vp.bounces/vp.touches*100);
-      stat = `📊 พฤติกรรมที่โซน POC (120 วัน): ราคาวิ่งเข้าโซน ${vp.touches} ครั้ง → เด้งกลับ ${vp.bounces} ครั้ง (${bp}%) · ทะลุผ่าน ${vp.breaks} ครั้ง`;
-    }
-    const pos = r.price > vp.vah ? `🟢 เหนือ ${gl('Value Area')}` : r.price < vp.val ? `🔴 ใต้ ${gl('Value Area')}` : '⚪ ในค่ากลางตลาด';
-    vpBlock = `<div class="vpbox">
-      <div class="vph">📐 ${gl('Volume Profile')} — โซนสำคัญอัตโนมัติ <span style="color:var(--muted);font-weight:400">(${pos})</span></div>
-      <div class="vpflex">
-        <div class="vpchart">${bars}</div>
-        <div class="vplv">
-          <div class="lvrow"><span>${gl('VAH')} (ขอบบน Value Area)</span><b class="down">${fmt(vp.vah)}</b></div>
-          <div class="lvrow"><span>${gl('POC')} (วอลุ่มหนาแน่นสุด)</span><b style="color:var(--blue)">${fmt(vp.poc)}</b></div>
-          <div class="lvrow"><span>${gl('VAL')} (ขอบล่าง Value Area)</span><b class="up">${fmt(vp.val)}</b></div>
-          ${vp.hvn.length?`<div class="lvrow"><span>${gl('HVN')} โซนวอลุ่มหนา</span><b>${vp.hvn.slice(-3).map(x=>fmt(x)).join(' · ')}</b></div>`:''}
-          ${vp.lvn.length?`<div class="lvrow"><span>${gl('LVN')} โซนวอลุ่มบาง</span><b>${vp.lvn.slice(-3).map(x=>fmt(x)).join(' · ')}</b></div>`:''}
-        </div>
-      </div>
-      ${stat?`<div class="vpstat">${stat}</div>`:''}
-    </div>`;
-  }
+  const vpBlock = vpBlockOf(r);
 
   // Predictive Analytics: โดนัทความน่าจะเป็น 5 วันข้างหน้าจากเหตุการณ์คล้ายกันในอดีต
   let predBlock = '';
