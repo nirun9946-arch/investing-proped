@@ -144,6 +144,43 @@
   .lv-sup b{color:var(--green)} .lv-res b{color:var(--red)}
   .lv-stop{border-color:rgba(251,191,36,.3)} .lv-stop b{color:var(--yellow)}
   .lv-tgt{border-color:rgba(115,66,226,.42);background:var(--purple-bg)} .lv-tgt b{color:var(--purple-hi)}
+  /* ===== โหมดรายการ: แถวกะทัดรัด เห็นหลายตัวพร้อมกัน (ค่าเริ่มต้นบนมือถือ) ===== */
+  #grid.list-mode{display:flex;flex-direction:column;gap:8px}
+  .lrow{display:flex;align-items:center;gap:10px;cursor:pointer;position:relative;
+    background:linear-gradient(135deg,rgba(30,41,59,.6),rgba(15,23,42,.42));
+    border:1px solid var(--border);border-left:3px solid var(--muted);
+    border-radius:14px;padding:10px 12px;transition:border-color .2s ease,transform .18s var(--ease-spring)}
+  .lrow:hover{border-color:rgba(115,66,226,.45);transform:translateX(2px)}
+  .lrow.v-buy{border-left-color:var(--green)} .lrow.v-sell{border-left-color:var(--red)}
+  .lrow.v-hold{border-left-color:var(--yellow)}
+  .lrow .lt{min-width:0;flex:1}
+  .lrow .lt b{font-size:1rem;font-weight:800;letter-spacing:.3px}
+  .lrow .lt .lsec{display:block;font-size:.68rem;color:var(--muted);margin-top:1px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lrow .lspark{width:64px;height:26px;flex:none}
+  .lrow .lpx{text-align:right;flex:none;line-height:1.3}
+  .lrow .lpx b{font-size:1rem;font-weight:800;font-variant-numeric:tabular-nums;display:block}
+  .lrow .lpx .lchg{font-size:.8rem;font-weight:700;font-variant-numeric:tabular-nums}
+  .lrow .lv-badge{flex:none;font-size:.68rem;font-weight:800;padding:3px 8px;border-radius:8px;
+    white-space:nowrap}
+  .lrow .lflag{position:absolute;top:-5px;right:8px;font-size:.62rem;font-weight:800;
+    background:var(--green-bg);color:var(--green);border:1px solid rgba(52,211,153,.5);
+    padding:1px 7px;border-radius:7px}
+  .lrow .ldel{background:none;color:var(--muted);font-size:.9rem;padding:2px 4px;flex:none}
+  .lrow .ldel:hover{color:var(--red)}
+  /* ปุ่มสลับมุมมอง การ์ด/รายการ */
+  .vsw{display:flex;gap:0;margin-left:auto;border:1px solid var(--border);
+    border-radius:20px;overflow:hidden;flex:0 0 auto}
+  .vsw button{background:none;border:none;color:var(--muted);font-size:.76rem;font-weight:700;
+    padding:5px 12px}
+  .vsw button.on{background:var(--purple-bg);color:var(--purple-hi)}
+  /* ===== ส่วนรายละเอียดรอง — เดสก์ท็อปกางเสมอ, มือถือพับได้ (ดู media query) ===== */
+  .mid-btn{display:none;width:100%;margin-top:10px;padding:9px 13px;border-radius:var(--r-block);
+    background:var(--purple-bg);border:1px solid rgba(115,66,226,.4);color:var(--purple-hi);
+    font-weight:700;font-size:.84rem;align-items:center;justify-content:space-between;gap:8px}
+  .mid-btn .chev{transition:transform .35s var(--ease-spring);flex:none}
+  .mid-btn.on .chev{transform:rotate(180deg)}
+  .mid-in{display:contents}
   /* ===== ส่วนพับเก็บ "ข้อมูลเชิงลึก" ===== */
   .deep-btn{width:100%;margin-top:12px;padding:10px 14px;border-radius:var(--r-block);
     background:none;border:1px dashed rgba(255,255,255,.18);color:var(--muted);
@@ -676,6 +713,49 @@
     #page-news,#page-insider,#page-calendar{padding:12px 12px 32px}
     .cal-date{min-width:58px;padding:6px 8px}
     footer{padding:18px 14px}
+
+    /* ===== ปรับให้ดูง่ายบนมือถือ =====
+       เดิมต้องเลื่อน ~3 จอกว่าจะเจอการ์ดใบแรก และการ์ดใบเดียวสูงเกือบ 2 จอ
+       จึงย่อส่วนตกแต่ง + พับรายละเอียดรองไว้ ให้เห็นหุ้นหลายตัวในหน้าจอเดียว */
+    #hero{display:none}                    /* วิดีโอ hero สูง 620px — ไม่ช่วยตอนดูหุ้น */
+    #mktbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
+      padding:10px 12px 2px;gap:8px;scroll-snap-type:x mandatory}
+    #mktbar::-webkit-scrollbar{display:none}
+    .mk-item{min-width:150px;flex:0 0 auto;scroll-snap-align:start;padding:8px 12px}
+    .mk-ta-hint{display:none}
+    .card{padding:14px}
+    .price{font-size:2rem}                 /* ราคาคือข้อมูลสำคัญสุด — ทำให้อ่านง่าย */
+    .chg{font-size:1.05rem}
+    .tk{font-size:1.15rem}
+    .tk .tk-go{display:block;margin:2px 0 0}
+    .sec-art{width:104px;height:104px}
+    .levels{gap:6px}
+    .lv{padding:7px 9px}
+    .lv b{font-size:.95rem}
+    /* แถบสรุป/เรียงลำดับ — เลื่อนแนวนอนแถวเดียว แทนการห่อหลายบรรทัด */
+    #summary{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding:10px 12px 0}
+    #summary::-webkit-scrollbar{display:none}
+    #summary .pill{flex:0 0 auto;font-size:.76rem;padding:5px 11px}
+    #summary .pill.time{display:none}          /* ข้อความอธิบายยาว — ตัดบนจอเล็ก */
+    .sortbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding:10px 12px 0}
+    .sortbar::-webkit-scrollbar{display:none}
+    .sortbar .sb-lbl{flex:0 0 auto}
+    .sb-btn{flex:0 0 auto;font-size:.76rem;padding:5px 11px}
+    /* การ์ดต้อนรับ — เหลือแก่น (หัวข้อ + ความหมายสี + ปุ่มปิด) บนจอเล็ก
+       เดิมสูง ~740px ดันให้ต้องเลื่อนหลายจอกว่าจะเจอหุ้น */
+    #introCard{padding:14px 14px 12px}
+    #introCard .in-grid{display:none}
+    #introCard h3{font-size:.98rem}
+    #introCard .in-sub{font-size:.79rem;margin-bottom:8px}
+    #introCard .in-colors{font-size:.75rem;gap:6px;margin-bottom:8px}
+    #introCard .in-warn{font-size:.73rem;margin-bottom:10px}
+    /* กล่องสัญญาณกลับตัว — โชว์ 2 ข้อแรกพอ ที่เหลือดูได้ในหน้ารวมข้อมูล */
+    .rev-box .rev-sig:nth-of-type(n+3){display:none}
+    /* ปุ่มพับรายละเอียดรอง — โผล่เฉพาะจอเล็ก */
+    .mid-btn{display:flex}
+    .mid{display:grid;grid-template-rows:0fr;transition:grid-template-rows .4s var(--ease-spring)}
+    .mid.open{grid-template-rows:1fr}
+    .mid-in{display:block;overflow:hidden;min-height:0}
   }
 </style>
 </head>
@@ -851,6 +931,10 @@
   <button class="sb-btn" data-sort="rsi" onclick="setSort('rsi')">📊 RSI</button>
   <button class="sb-btn" data-sort="name" onclick="setSort('name')">🔤 ชื่อ</button>
   <button class="sb-btn" data-sort="theme" onclick="setSort('theme')">🗂 หมวดธีม</button>
+  <div class="vsw" id="viewSwitch">
+    <button data-view="list" onclick="setView('list')">☰ รายการ</button>
+    <button data-view="card" onclick="setView('card')">🔲 การ์ด</button>
+  </div>
 </div>
 <div id="grid"></div>
 
@@ -1887,8 +1971,9 @@ function card(r){
 
   // การ์ด 3 ชั้น: บน=ตัดสินใจเร็ว (ราคา/verdict/กลับตัว/ควรซื้อไหม)
   // กลาง=ระดับราคาสำคัญ+ความคุ้มค่า · ลึก=รายละเอียดเทคนิค (พับเก็บ จำสถานะต่อการ์ด)
-  let deepOpen = false;
+  let deepOpen = false, midOpen = false;
   try{ deepOpen = !!JSON.parse(localStorage.getItem('deepOpen')||'{}')[r.ticker]; }catch(e){}
+  try{ midOpen = !!JSON.parse(localStorage.getItem('midOpen')||'{}')[r.ticker]; }catch(e){}
   const sa = secArt(r);
   return `<div class="card">
     ${sa.art}
@@ -1904,16 +1989,21 @@ function card(r){
     ${confLine}
     <div class="meter"><i style="${barStyle}"></i></div>
     ${revBlock}
-    <div class="levels">
-      <div class="lv lv-sup"><span>${gl('แนวรับ')}</span><b>${fmt(r.support)}</b></div>
-      <div class="lv lv-res"><span>${gl('แนวต้าน')}</span><b>${fmt(r.resistance)}</b></div>
-      <div class="lv lv-stop"><span>${gl('ตัดขาดทุน')}</span><b>${fmt(r.stop_suggest)}</b></div>
-      <div class="lv lv-tgt"><span>${gl('เป้าหมาย')}</span><b>${fmt(r.target_suggest)}</b></div>
-    </div>
-    ${rangeBar}
-    ${valBlock}
-    ${adviceBlock}
-    ${allocBlock(r)}
+    <button class="mid-btn${midOpen?' on':''}" id="midb-${r.ticker}" onclick="toggleMid('${r.ticker}')">
+      <span>📊 แนวรับ-แนวต้าน · ความคุ้มค่า · ควรซื้อไหม</span><span class="chev">▼</span>
+    </button>
+    <div class="mid${midOpen?' open':''}" id="mid-${r.ticker}"><div class="mid-in">
+      <div class="levels">
+        <div class="lv lv-sup"><span>${gl('แนวรับ')}</span><b>${fmt(r.support)}</b></div>
+        <div class="lv lv-res"><span>${gl('แนวต้าน')}</span><b>${fmt(r.resistance)}</b></div>
+        <div class="lv lv-stop"><span>${gl('ตัดขาดทุน')}</span><b>${fmt(r.stop_suggest)}</b></div>
+        <div class="lv lv-tgt"><span>${gl('เป้าหมาย')}</span><b>${fmt(r.target_suggest)}</b></div>
+      </div>
+      ${rangeBar}
+      ${valBlock}
+      ${adviceBlock}
+      ${allocBlock(r)}
+    </div></div>
     <button class="ai-btn" id="aib-${r.ticker}" onclick="aiAnalyze('${r.ticker}')">🤖 AI วิเคราะห์เจาะลึก (ฟรี)</button>
     <div id="ai-${r.ticker}" style="display:none"></div>
     <button class="deep-btn${deepOpen?' on':''}" id="deepb-${r.ticker}" onclick="toggleDeep('${r.ticker}')">
@@ -1937,6 +2027,20 @@ function card(r){
       <div class="sigs">${sigs}</div>
     </div></div>
   </div>`;
+}
+
+// พับ/กางรายละเอียดรอง (แนวรับ-แนวต้าน/ความคุ้มค่า/ควรซื้อไหม) — ใช้บนมือถือ
+function toggleMid(t){
+  const box = document.getElementById('mid-' + t);
+  const btn = document.getElementById('midb-' + t);
+  if(!box || !btn) return;
+  const open = box.classList.toggle('open');
+  btn.classList.toggle('on', open);
+  try{
+    const m = JSON.parse(localStorage.getItem('midOpen')||'{}');
+    if(open) m[t] = 1; else delete m[t];
+    localStorage.setItem('midOpen', JSON.stringify(m));
+  }catch(e){}
 }
 
 // พับ/กางส่วนข้อมูลเชิงลึกของการ์ด — จำสถานะต่อหุ้นไว้ใน localStorage
@@ -2207,6 +2311,54 @@ function renderSummary(){
 
 let sortMode = localStorage.getItem('sortMode') || 'score';
 
+// มุมมองการ์ด/รายการ — มือถือเริ่มที่ "รายการ" (เห็นหลายตัวพร้อมกัน), เดสก์ท็อปเริ่มที่ "การ์ด"
+let viewMode = localStorage.getItem('viewMode')
+  || (window.matchMedia('(max-width:640px)').matches ? 'list' : 'card');
+
+function setView(v){
+  viewMode = v;
+  localStorage.setItem('viewMode', v);
+  render();
+}
+
+// กราฟจิ๋วในแถวรายการ (เล็กกว่าในการ์ด ใช้เส้นอย่างเดียว)
+function miniSpark(r){
+  const sp = r.spark;
+  if(!Array.isArray(sp) || sp.length < 2) return '<span class="lspark"></span>';
+  const W = 64, H = 26, n = sp.length;
+  const min = Math.min(...sp), max = Math.max(...sp), span = (max-min) || 1;
+  const d = sp.map((v,i)=>(i?'L':'M') + (i/(n-1)*W).toFixed(1) + ' ' +
+            (H-2 - (v-min)/span*(H-4)).toFixed(1)).join('');
+  const col = (sp[n-1] >= sp[0]) ? 'var(--green)' : 'var(--red)';
+  return `<svg class="lspark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <path d="${d}" fill="none" style="stroke:${col}" stroke-width="1.6"
+      stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+// แถวรายการ: ชื่อ + กราฟจิ๋ว + ราคา/% + คำตัดสิน — แตะทั้งแถวเพื่อดูข้อมูลทั้งหมด
+function listRow(r){
+  if(r.error) return `<div class="lrow" onclick="openStock('${r.ticker}')">
+    <div class="lt"><b>${escHtml(r.ticker)}</b><span class="lsec">❌ ${escHtml(r.error)}</span></div>
+    <button class="ldel" onclick="event.stopPropagation();removeTicker('${r.ticker}')">✕</button></div>`;
+  const lq = liveQuotes[r.ticker];
+  const pv = priceView(r, lq);
+  const up = (pv.chg ?? 0) >= 0;
+  const vc = verdictClass(r.verdict);
+  const rev = r.reversal && r.reversal.score >= 3
+    ? '<span class="lflag">🔄 กลับตัว</span>' : '';
+  const sec = THEME_MAP[r.ticker] || (SECTORS[r.sector] ? SECTORS[r.sector].th : '');
+  return `<div class="lrow ${vc}" onclick="openStock('${r.ticker}')"
+      title="แตะเพื่อดูข้อมูลทั้งหมดของ ${escHtml(r.ticker)}">
+    ${rev}
+    <div class="lt"><b>${escHtml(r.ticker)}</b><span class="lsec">${escHtml(sec)}</span></div>
+    ${miniSpark(r)}
+    <div class="lpx"><b>${fmt(pv.price)}</b>
+      <span class="lchg ${up?'up':'down'}">${up?'+':''}${pv.chg!=null?fmt(pv.chg):'-'}%</span></div>
+    <span class="lv-badge ${vc}">${verdictThai(r.verdict)}</span>
+    <button class="ldel" title="ลบ" onclick="event.stopPropagation();removeTicker('${r.ticker}')">✕</button>
+  </div>`;
+}
+
 // ===== หมวดธีมการลงทุน — จัดกลุ่มพอร์ตตามธีมที่นักลงทุนใช้จริง =====
 // หุ้นที่ไม่อยู่ในลิสต์จะตกไปตามกลุ่มธุรกิจ (sector) อัตโนมัติ
 const THEME_MAP = {
@@ -2277,6 +2429,9 @@ function sortResults(list){
 function render(){
   const all = Object.values(results);
   const order = sortResults(all);
+  const isList = viewMode === 'list';
+  grid.classList.toggle('list-mode', isList);
+  const draw = isList ? listRow : card;
   if(sortMode === 'theme' && all.length){
     // จัดกลุ่มตามหมวดธีม — ในกลุ่มเรียงตามคะแนน, กลุ่มใหญ่ขึ้นก่อน
     const groups = {};
@@ -2293,15 +2448,16 @@ function render(){
         ? ` <span class="grp-avg ${up?'up':'down'}">เฉลี่ยวันนี้ ${up?'+':''}${fmt(avg)}%</span>` : '';
       return `<div class="grp-head">${THEME_ICONS[g]||'🗂'} ${escHtml(g)}` +
         ` <span class="conf">${rs.length} ตัว</span>${avgTxt}</div>` +
-        rs.map(card).join('');
+        rs.map(draw).join('');
     }).join('');
   } else {
-    grid.innerHTML = order.map(card).join('');
+    grid.innerHTML = order.map(draw).join('');
   }
   const sb = document.getElementById('sortbar');
   if(sb){
     sb.style.display = all.length > 1 ? 'flex' : 'none';
     sb.querySelectorAll('.sb-btn').forEach(b=>b.classList.toggle('on', b.dataset.sort === sortMode));
+    sb.querySelectorAll('.vsw button').forEach(b=>b.classList.toggle('on', b.dataset.view === viewMode));
   }
   renderSummary();
   renderOverview();
@@ -2745,6 +2901,8 @@ async function fetchQuotes(){
       }
     });
     if(latestTs) lastQuoteTs = latestTs;
+    // โหมดรายการไม่มี element live-* รายตัว → วาดใหม่ทั้งรายการให้ราคาขยับตาม
+    if(viewMode === 'list' && (j.quotes||[]).length) render();
     const lt = document.getElementById('liveTime');
     if(lt) lt.textContent = (lastQuoteTs || new Date()).toLocaleTimeString('th-TH', {timeZone:'Asia/Bangkok'});
   }catch(e){}
