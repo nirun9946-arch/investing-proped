@@ -20,6 +20,7 @@ import secrets
 import threading
 
 import ai as ai_mod
+import fundamentals as fund_mod
 import investing_pro as core
 import news as news_mod
 
@@ -326,6 +327,17 @@ def api_market_ta(symbol):
         return jsonify(out)
     except Exception as e:
         return jsonify({"ok": False, "error": f"วิเคราะห์ไม่สำเร็จ: {str(e)[:120]}"}), 500
+
+
+@app.route("/api/fundamentals/<ticker>")
+def api_fundamentals(ticker):
+    """ข้อมูลพื้นฐานรายตัว: มูลค่า/กระแสเงินสด/มาร์จิ้น/งบดุล/ปันผล + กราฟรายปี"""
+    force = request.args.get("refresh") == "1"
+    try:
+        r = fund_mod.get_fundamentals(ticker, force=force)
+        return jsonify(r), (200 if r.get("ok") else 404)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"ดึงข้อมูลพื้นฐานไม่สำเร็จ: {str(e)[:120]}"}), 500
 
 
 @app.route("/api/ai/<ticker>")

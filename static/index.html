@@ -367,6 +367,61 @@
     transition:all .18s ease}
   .sb-btn:hover{border-color:var(--purple-hi);color:var(--text)}
   .sb-btn.on{background:var(--purple-bg);border-color:var(--purple-hi);color:var(--purple-hi)}
+  /* ===== หน้าข้อมูลพื้นฐานรายตัว (เปิดเมื่อคลิกชื่อหุ้น) ===== */
+  .tk{cursor:pointer}
+  .tk:hover{color:var(--purple-hi)}
+  .tk .tk-go{font-size:.62rem;font-weight:700;color:var(--purple-hi);opacity:.75;margin-left:6px;
+    letter-spacing:.3px;vertical-align:middle}
+  #fundOv{position:fixed;inset:0;z-index:120;background:rgba(8,12,22,.82);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    overflow-y:auto;display:none;padding:22px 14px 60px}
+  #fundOv.on{display:block;animation:fadeIn .22s ease}
+  .fd-wrap{max-width:1180px;margin:0 auto}
+  .fd-top{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+  .fd-back{background:var(--card2);border:1px solid var(--border);color:var(--text);
+    border-radius:20px;padding:8px 16px;font-weight:700;font-size:.85rem}
+  .fd-back:hover{border-color:var(--purple-hi);color:var(--purple-hi)}
+  .fd-name{font-family:var(--font-heading);font-size:1.5rem;font-weight:800;line-height:1.2}
+  .fd-sub{font-size:.8rem;color:var(--muted);margin-top:3px}
+  .fd-px{margin-left:auto;text-align:right}
+  .fd-px b{font-size:1.5rem;font-weight:800;font-variant-numeric:tabular-nums}
+  .fd-sec{margin-top:18px}
+  .fd-h{font-size:1.02rem;font-weight:800;margin-bottom:4px}
+  .fd-hint{font-size:.8rem;color:var(--muted);margin-bottom:10px}
+  .fd-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:10px}
+  .fd-m{background:linear-gradient(135deg,rgba(30,41,59,.6),rgba(15,23,42,.45));
+    border:1px solid var(--border);border-left:3px solid var(--muted);
+    border-radius:var(--r-block);padding:11px 14px}
+  .fd-m.good{border-left-color:var(--green)} .fd-m.ok{border-left-color:var(--blue)}
+  .fd-m.warn{border-left-color:var(--yellow)} .fd-m.bad{border-left-color:var(--red)}
+  .fd-m.info{border-left-color:var(--purple-hi)}
+  .fd-m .k{font-size:.7rem;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+  .fd-m.good .k{color:var(--green)} .fd-m.ok .k{color:var(--blue)}
+  .fd-m.warn .k{color:var(--yellow)} .fd-m.bad .k{color:var(--red)}
+  .fd-m.info .k{color:var(--purple-hi)}
+  .fd-m .v{font-size:1.02rem;font-weight:800;margin-top:2px;font-variant-numeric:tabular-nums}
+  .fd-m .n{font-size:.79rem;color:var(--muted);line-height:1.5;margin-top:3px}
+  .fd-charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+  .fd-ch{background:linear-gradient(135deg,rgba(30,41,59,.6),rgba(15,23,42,.45));
+    border:1px solid var(--border);border-radius:var(--r-item);padding:14px 16px}
+  .fd-ch h4{font-size:.95rem;font-weight:800}
+  .fd-ch .cs{font-size:.75rem;color:var(--muted);margin-bottom:10px}
+  .fd-bars{display:flex;align-items:flex-end;gap:8px;height:150px;padding-top:6px}
+  .fd-bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;
+    height:100%;gap:4px;min-width:0}
+  .fd-bar .bv{font-size:.66rem;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .fd-bar i{display:block;width:100%;border-radius:4px 4px 0 0;min-height:2px;
+    background:linear-gradient(180deg,var(--green),rgba(52,211,153,.45));transition:height .5s var(--ease-spring)}
+  .fd-bar.neg i{background:linear-gradient(180deg,rgba(248,113,113,.85),rgba(248,113,113,.4));
+    border-radius:0 0 4px 4px}
+  .fd-bar.blue i{background:linear-gradient(180deg,#60a5fa,rgba(96,165,250,.4))}
+  .fd-bar .by{font-size:.68rem;color:var(--muted);margin-top:4px}
+  .fd-note{font-size:.75rem;color:var(--muted);margin-top:14px;line-height:1.6;opacity:.85}
+  @media(max-width:640px){
+    #fundOv{padding:14px 10px 50px}
+    .fd-name{font-size:1.2rem} .fd-px{margin-left:0;text-align:left}
+    .fd-bars{height:120px;gap:5px} .fd-bar .bv{font-size:.58rem}
+  }
   /* หัวข้อกลุ่มหมวดธีม — กินเต็มแถวของ grid */
   .grp-head{grid-column:1/-1;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
     font-size:1.05rem;font-weight:800;padding:10px 6px 8px;margin-top:8px;
@@ -666,6 +721,7 @@
 
 <div id="mktbar"><div class="mk-loading">🌍 กำลังโหลดราคาตลาดโลก...</div></div>
 <div id="mktTA"></div>
+<div id="fundOv" onclick="if(event.target===this)closeFund()"><div class="fd-wrap" id="fundBody"></div></div>
 
 <section id="hero">
   <video class="hero-vid" autoplay muted loop playsinline preload="metadata" aria-hidden="true"
@@ -1307,6 +1363,112 @@ function holdBlock(r){
   </div>`;
 }
 
+// ===== หน้าข้อมูลพื้นฐานรายตัว (คลิกชื่อหุ้นบนการ์ด) =====
+function closeFund(){
+  document.getElementById('fundOv').classList.remove('on');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e=>{ if(e.key === 'Escape') closeFund(); });
+
+function fdMoney(v){
+  if(v == null) return '—';
+  const a = Math.abs(v), s = v < 0 ? '-' : '';
+  if(a >= 1e12) return s + '$' + (a/1e12).toFixed(2) + 'T';
+  if(a >= 1e9)  return s + '$' + (a/1e9).toFixed(2) + 'B';
+  if(a >= 1e6)  return s + '$' + (a/1e6).toFixed(0) + 'M';
+  return s + '$' + a.toFixed(2);
+}
+
+// กราฟแท่งรายปี — สเกลจากค่าสัมบูรณ์สูงสุด รองรับปีที่ติดลบ (แท่งแดงชี้ลง)
+function fdChart(title, sub, pts, kind){
+  if(!pts || pts.length < 2) return '';
+  const max = Math.max(...pts.map(p=>Math.abs(p.value))) || 1;
+  const bars = pts.map(p=>{
+    const h = Math.max(2, Math.abs(p.value)/max*100);
+    const neg = p.value < 0;
+    const txt = kind === 'eps' ? (p.value).toFixed(2) : fdMoney(p.value).replace('$','');
+    return `<div class="fd-bar ${neg?'neg':''} ${kind==='rev'?'blue':''}">
+      <span class="bv">${txt}</span>
+      <i style="height:${h.toFixed(1)}%"></i>
+      <span class="by">${p.year}</span>
+    </div>`;
+  }).join('');
+  return `<div class="fd-ch"><h4>${escHtml(title)}</h4><div class="cs">${escHtml(sub)}</div>
+    <div class="fd-bars">${bars}</div></div>`;
+}
+
+async function openFund(t){
+  const ov = document.getElementById('fundOv');
+  const box = document.getElementById('fundBody');
+  ov.classList.add('on');
+  document.body.style.overflow = 'hidden';
+  ov.scrollTop = 0;
+  box.innerHTML = `<button class="fd-back" onclick="closeFund()">← กลับ</button>
+    <div style="margin-top:20px;color:var(--muted)">⏳ กำลังดึงข้อมูลพื้นฐานของ ${escHtml(t)}...</div>`;
+  let j;
+  try{
+    j = await (await fetchWithTimeout('/api/fundamentals/'+encodeURIComponent(t), 90000)).json();
+  }catch(e){
+    box.innerHTML = `<button class="fd-back" onclick="closeFund()">← กลับ</button>
+      <div style="margin-top:20px" class="ai-err">⚠️ เชื่อมต่อไม่ได้ — ลองใหม่อีกครั้ง</div>`;
+    return;
+  }
+  if(!j.ok){
+    box.innerHTML = `<button class="fd-back" onclick="closeFund()">← กลับ</button>
+      <div style="margin-top:20px" class="ai-err">⚠️ ${escHtml(j.error||'ไม่มีข้อมูลพื้นฐาน')}</div>`;
+    return;
+  }
+
+  const r = results[t] || {};
+  const chg = (liveQuotes[t]?.chg ?? r.change_pct);
+  const px  = (r.price != null ? r.price : j.price);
+  const up  = (chg ?? 0) >= 0;
+  const sa  = secArt(r.ticker ? r : {ticker:t, sector:j.sector});
+
+  const metrics = (j.metrics||[]).map(m=>`<div class="fd-m ${m.tone}">
+    <div class="k">${escHtml(m.label)}</div>
+    <div class="v">${escHtml(m.value)}</div>
+    <div class="n">${escHtml(m.note)}</div>
+  </div>`).join('');
+
+  const a = j.annual || {};
+  const charts = [
+    fdChart('รายได้ (Revenue)', 'ยอดขายรวมต่อปี', a.revenue, 'rev'),
+    fdChart('กระแสเงินสดอิสระ (FCF)', 'เงินสดที่เหลือหลังลงทุน', a.fcf, 'fcf'),
+    fdChart('กำไรสุทธิ (Net Income)', 'กำไรหลังหักทุกอย่าง', a.net_income, 'ni'),
+    fdChart('กำไรต่อหุ้น (EPS)', 'กำไรหารด้วยจำนวนหุ้น', a.eps, 'eps'),
+  ].filter(Boolean).join('');
+  const nYears = (a.revenue || a.fcf || []).length;
+
+  box.innerHTML = `
+    <div class="fd-top">
+      <button class="fd-back" onclick="closeFund()">← กลับ</button>
+      <div>
+        <div class="fd-name">${escHtml(j.name)}</div>
+        <div class="fd-sub">${escHtml(t)}${j.exchange?' · '+escHtml(j.exchange):''}${j.industry?' · '+escHtml(j.industry):''}</div>
+      </div>
+      <div class="fd-px">
+        <b>${fmt(px)}</b>
+        ${chg!=null?`<div class="chg ${up?'up':'down'}" style="margin:0">${up?'+':''}${fmt(chg)}% วันนี้</div>`:''}
+      </div>
+    </div>
+
+    <div class="fd-sec">
+      <div class="fd-h">📋 สรุปแบบเข้าใจง่าย</div>
+      <div class="fd-hint">อ่านมุมมองคร่าวๆ จากตัวเลขทุกหมวด — ไม่ใช่คำสั่งซื้อขาย</div>
+      <div class="fd-grid">${metrics}</div>
+    </div>
+
+    ${charts?`<div class="fd-sec">
+      <div class="fd-h">📊 กราฟแท่งรายปี</div>
+      <div class="fd-hint">ย้อนหลัง ${nYears} ปีตามที่มีในงบ (ข้อมูลจาก Yahoo Finance)</div>
+      <div class="fd-charts">${charts}</div>
+    </div>`:''}
+
+    <div class="fd-note">ℹ️ ข้อมูลพื้นฐานจาก Yahoo Finance (งบการเงินอัปเดตรายไตรมาส อาจช้ากว่าประกาศจริงเล็กน้อย)
+      · คำอธิบายเป็นการตีความตัวเลขตามเกณฑ์ทั่วไป ใช้ประกอบการตัดสินใจ ไม่ใช่คำแนะนำการลงทุน</div>`;
+}
+
 // ===== ลายกราฟฟิกประจำกลุ่มธุรกิจ =====
 // แต่ละ sector มี: ชื่อไทย · สี · ไอคอนเล็ก (ป้าย) · ลายใหญ่ (ลายน้ำมุมการ์ด)
 // path ทั้งหมดวาดบน viewBox 24x24 สไตล์เส้น (stroke) ให้เข้ากับธีม
@@ -1516,7 +1678,8 @@ function card(r){
   return `<div class="card">
     ${sa.art}
     <button class="del" title="ลบออกจาก watchlist" onclick="removeTicker('${r.ticker}')">✕</button>
-    <div class="tk">${r.ticker}${mktTag}</div>
+    <div class="tk" title="กดดูข้อมูลพื้นฐาน (P/E, กระแสเงินสด, งบดุล, กราฟรายปี)"
+         onclick="openFund('${r.ticker}')">${r.ticker}<span class="tk-go">ข้อมูลพื้นฐาน ›</span>${mktTag}</div>
     ${sa.tag}
     <div class="price" id="live-${r.ticker}">${fmt(mainPrice)}<span class="chg ${up?'up':'down'}">${up?'+':''}${fmt(mainChg)}%</span></div>
     ${isDelayed?'<div class="ext" style="color:var(--muted)">⏱ หุ้นไทย: ราคาดีเลย์ ~15 นาที (ตามตลาด SET)</div>':''}
