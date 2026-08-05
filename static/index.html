@@ -299,8 +299,14 @@
   .abar i{display:block;height:100%;border-radius:5px 0 0 5px;transition:.3s}
   .atext{line-height:1.5}
   .amuted{color:var(--muted)}
+  .btn-purple{background:var(--purple-bg);color:var(--purple-hi);
+    border:1px solid rgba(115,66,226,.5);font-weight:700}
+  .btn-purple:hover{background:rgba(115,66,226,.3)}
+  /* ล็อกอินย้ายไปเมนู ☰ แล้ว — ปุ่มบนแถบบนซ่อนไว้ (พาเนลยังต้องอยู่ใน DOM) */
   #authWrap{position:relative}
-  #authBtn{background:var(--card);border:1px solid var(--border);color:var(--text);font-weight:700}
+  #authBtn{display:none}
+  #authWrap.show-btn #authBtn{background:var(--card);border:1px solid var(--border);
+    color:var(--text);font-weight:700;display:inline-block}
   #authBtn.on{border-color:var(--green);color:var(--green)}
   #authPanel{position:absolute;top:115%;right:0;background:var(--card);border:1px solid var(--border);
     border-radius:16px;padding:14px;display:none;flex-direction:column;gap:8px;width:250px;z-index:60;
@@ -417,6 +423,12 @@
   .fd-bar.blue i{background:linear-gradient(180deg,#60a5fa,rgba(96,165,250,.4))}
   .fd-bar .by{font-size:.68rem;color:var(--muted);margin-top:4px}
   .fd-note{font-size:.75rem;color:var(--muted);margin-top:14px;line-height:1.6;opacity:.85}
+  .fd-acts{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:4px}
+  .fd-inlist{font-size:.83rem;font-weight:700;color:var(--green)}
+  .fd-tech{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:18px}
+  .fd-tech > div{min-width:0}
+  #fundOv .nlist{display:flex;flex-direction:column;gap:10px}
+  #fundOv .fd-px .ext{font-size:.75rem}
   @media(max-width:640px){
     #fundOv{padding:14px 10px 50px}
     .fd-name{font-size:1.2rem} .fd-px{margin-left:0;text-align:left}
@@ -680,10 +692,12 @@
   </nav>
   <div class="spacer"></div>
   <div class="addbox">
-    <input id="newTicker" placeholder="เพิ่มหุ้น เช่น NVDA, PTT.BK" onkeydown="if(event.key==='Enter')addTicker()">
+    <input id="newTicker" placeholder="พิมพ์ชื่อหุ้น เช่น NVDA, PTT.BK" onkeydown="if(event.key==='Enter')addTicker()">
     <button class="btn-blue" onclick="addTicker()">＋ เพิ่ม</button>
   </div>
   <button class="btn-green" id="scanBtn" onclick="scanAll()">🔄 สแกนทั้งหมด</button>
+  <button class="btn-purple" id="lookupBtn" onclick="lookupTyped()"
+    title="พิมพ์ชื่อหุ้นในช่องซ้าย แล้วกดปุ่มนี้เพื่อดูข้อมูลทั้งหมดของหุ้นตัวนั้น">🔍 ดูข้อมูลหุ้น</button>
   <div id="authWrap">
     <button id="authBtn" onclick="toggleAuth()">👤 เข้าสู่ระบบ</button>
     <div id="authPanel">
@@ -714,6 +728,7 @@
   <button class="mb-link" id="mbtab-news" onclick="goPage('news')">📰 ข่าว</button>
   <button class="mb-link" id="mbtab-insider" onclick="goPage('insider')">🕵️ วงใน</button>
   <button class="mb-link" id="mbtab-calendar" onclick="goPage('calendar')">📅 ปฏิทิน</button>
+  <button class="mb-link" id="mbLogin" onclick="toggleMenu(false);toggleAuth()">👤 เข้าสู่ระบบ</button>
   <button class="cta-btn mb-cta" onclick="toggleMenu(false);scrollToWatchlist()">ดูวอทช์ลิสต์ของฉัน
     <span class="cta-arr"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
   </button>
@@ -993,6 +1008,8 @@ function updateAuthUI(){
   const loggedIn = !!authToken;
   btn.textContent = loggedIn ? '✅ ' + authUser : '👤 เข้าสู่ระบบ';
   btn.classList.toggle('on', loggedIn);
+  const mb = document.getElementById('mbLogin');      // ปุ่มล็อกอินในเมนู ☰
+  if(mb) mb.textContent = loggedIn ? ('✅ ' + authUser) : '👤 เข้าสู่ระบบ';
   document.getElementById('logoutRow').style.display = loggedIn ? 'flex' : 'none';
   document.getElementById('authUser').style.display = loggedIn ? 'none' : 'block';
   document.getElementById('authPass').style.display = loggedIn ? 'none' : 'block';
@@ -1397,76 +1414,274 @@ function fdChart(title, sub, pts, kind){
     <div class="fd-bars">${bars}</div></div>`;
 }
 
-async function openFund(t){
+// ปุ่ม "🔍 ดูข้อมูลหุ้น" — อ่านชื่อจากช่องพิมพ์แล้วเปิดหน้ารวมข้อมูล
+function lookupTyped(){
+  const inp = document.getElementById('newTicker');
+  const t = (inp.value || '').trim().toUpperCase();
+  if(!t){ toast('พิมพ์ชื่อหุ้นในช่องด้านซ้ายก่อน เช่น NVDA'); inp.focus(); return; }
+  openStock(t);
+}
+
+function openFund(t){ return openStock(t); }   // ชื่อเดิม — ยังเรียกได้
+
+// หน้ารวมข้อมูลหุ้นตัวเดียว: เทคนิค + พื้นฐาน + คนติดดอย + ผู้ถือหุ้น + ข่าว + AI
+async function openStock(t){
+  t = String(t).trim().toUpperCase();
   const ov = document.getElementById('fundOv');
   const box = document.getElementById('fundBody');
   ov.classList.add('on');
   document.body.style.overflow = 'hidden';
   ov.scrollTop = 0;
   box.innerHTML = `<button class="fd-back" onclick="closeFund()">← กลับ</button>
-    <div style="margin-top:20px;color:var(--muted)">⏳ กำลังดึงข้อมูลพื้นฐานของ ${escHtml(t)}...</div>`;
-  let j;
-  try{
-    j = await (await fetchWithTimeout('/api/fundamentals/'+encodeURIComponent(t), 90000)).json();
-  }catch(e){
+    <div style="margin-top:20px;color:var(--muted)">⏳ กำลังรวบรวมข้อมูลทั้งหมดของ ${escHtml(t)}...</div>`;
+
+  // ดึงเทคนิค + พื้นฐานพร้อมกัน (ตัวไหนล่มก็ยังแสดงอีกตัวได้)
+  const [ana, fun] = await Promise.all([
+    fetchWithTimeout('/api/analyze/'+encodeURIComponent(t), 120000)
+      .then(r=>r.json()).catch(()=>null),
+    fetchWithTimeout('/api/fundamentals/'+encodeURIComponent(t), 120000)
+      .then(r=>r.json()).catch(()=>null),
+  ]);
+
+  if((!ana || ana.error) && (!fun || !fun.ok)){
     box.innerHTML = `<button class="fd-back" onclick="closeFund()">← กลับ</button>
-      <div style="margin-top:20px" class="ai-err">⚠️ เชื่อมต่อไม่ได้ — ลองใหม่อีกครั้ง</div>`;
+      <div style="margin-top:20px" class="ai-err">⚠️ ไม่พบข้อมูลของ ${escHtml(t)} —
+      ตรวจสอบว่าพิมพ์ชื่อย่อถูกต้อง (หุ้นไทยต้องมี .BK ต่อท้าย เช่น PTT.BK)</div>`;
     return;
   }
-  if(!j.ok){
-    box.innerHTML = `<button class="fd-back" onclick="closeFund()">← กลับ</button>
-      <div style="margin-top:20px" class="ai-err">⚠️ ${escHtml(j.error||'ไม่มีข้อมูลพื้นฐาน')}</div>`;
-    return;
+
+  const r = (ana && !ana.error) ? ana : {ticker:t};
+  const j = (fun && fun.ok) ? fun : null;
+  const lq = liveQuotes[t];
+  const pv = priceView(r, lq);
+  const px = pv.price != null ? pv.price : (j ? j.price : null);
+  const chg = pv.chg;
+  const up = (chg ?? 0) >= 0;
+  const name = (j && j.name) || t;
+  const sa = secArt(r.sector ? r : {ticker:t, sector:(j&&j.sector)});
+  const inList = (watchlist||[]).includes(t);
+
+  // ---------- ส่วนเทคนิค ----------
+  let techHtml = '';
+  if(ana && !ana.error){
+    const score = r.score ?? 0;
+    const pct = Math.min(Math.abs(score)/10*50, 50);
+    const barColor = score > 0 ? 'var(--green)' : score < 0 ? 'var(--red)' : 'var(--muted)';
+    const barStyle = score >= 0 ? `left:50%;width:${pct}%;background:${barColor}`
+                                : `right:50%;width:${pct}%;background:${barColor}`;
+    const rsiTag = r.rsi >= 70 ? '<span class="rsi-tag rsi-ob">Overbought</span>'
+                 : r.rsi <= 30 ? '<span class="rsi-tag rsi-os">Oversold</span>' : '';
+    const rsiPos = Math.min(100, Math.max(0, r.rsi || 50));
+    const rev = r.reversal;
+    const revBox = rev ? `<div class="rev-box${rev.score>=4?' strong':''}">
+      <div class="rev-head">🔄 ${escHtml(rev.label)}
+        <span class="conf">(เข้าเงื่อนไข ${rev.score}/${rev.max} ข้อ · ลงมา ${rev.down_days}/6 วัน)</span></div>
+      ${rev.signals.map(s=>`<div class="rev-sig">✓ ${escHtml(s)}</div>`).join('')}</div>` : '';
+    const advice = r.advice_label ? `<div class="advice ad-${r.advice_tone}">
+      <span class="albl">💡 ควรซื้อไหม? → ${escHtml(r.advice_label)}</span>
+      ${(r.advice_reasons||[]).map(x=>`<div class="arsn">• ${glossify(x)}</div>`).join('')}
+      ${r.advice_plan?`<div class="aplan">${glossify(r.advice_plan)}</div>`:''}</div>` : '';
+    let rangeBar = '';
+    if(r.w52l != null && r.w52h != null && r.w52h > r.w52l && px != null){
+      const pos = Math.min(100, Math.max(0, (px - r.w52l)/(r.w52h - r.w52l)*100));
+      rangeBar = `<div class="rng">
+        <div class="rng-lbl"><span>📍 ตำแหน่งในกรอบ 52 สัปดาห์</span><b>${pos.toFixed(0)}%</b></div>
+        <div class="rng-bar"><i style="left:${pos.toFixed(1)}%"></i></div>
+        <div class="rng-cap"><span>ต่ำสุด ${fmt(r.w52l)}</span><span>สูงสุด ${fmt(r.w52h)}</span></div></div>`;
+    }
+    const sigs = (r.signals||[]).map(s=>
+      `<div class="sig"><span class="ic ${s.dir==='bull'?'up':'down'}">${s.dir==='bull'?'▲':'▼'}</span>
+       <span>${glossify(s.desc)}</span></div>`).join('');
+    const pred = r.prediction ? (()=>{
+      const pu = Math.round(r.prediction.prob_up*100), R=26, C=2*Math.PI*R;
+      const col = pu>=55?'var(--green)':pu<=45?'var(--red)':'var(--yellow)';
+      return `<div class="predict"><div class="pred-flex">
+        <svg class="pdonut" viewBox="0 0 64 64"><circle cx="32" cy="32" r="${R}" fill="none"
+          stroke="rgba(148,163,184,.18)" stroke-width="7"/>
+          <circle cx="32" cy="32" r="${R}" fill="none" stroke="${col}" stroke-width="7"
+            stroke-dasharray="${(C*pu/100).toFixed(1)} ${C.toFixed(1)}" stroke-linecap="round"
+            transform="rotate(-90 32 32)"/>
+          <text x="32" y="37" text-anchor="middle" class="pd-txt">${pu}%</text></svg>
+        <div class="plabel"><span>🔮 โอกาสราคา<b class="up">ขึ้น</b>ใน 5 วัน<br>
+          <span class="conf" style="margin-left:0">สถิติจากเหตุการณ์คล้ายกัน ${r.prediction.n} ครั้ง — ไม่ใช่คำทำนาย</span>
+        </span></div></div></div>`;
+    })() : '';
+
+    techHtml = `
+    <div class="fd-sec">
+      <div class="fd-h">🎯 สรุปการตัดสินใจ</div>
+      <div class="fd-hint">คะแนนรวมจากสัญญาณเทคนิคทั้งหมด</div>
+      <div class="fd-tech">
+        <div>
+          <span class="verdict ${verdictClass(r.verdict)}">${verdictThai(r.verdict)}</span>
+          ${r.confidence_label?`<div class="conf-lbl"><span class="cl-ic">🧭</span><span>${escHtml(r.confidence_label)}
+            <span class="conf">(คะแนน ${score>0?'+':''}${score})</span></span></div>`:''}
+          <div class="meter"><i style="${barStyle}"></i></div>
+          ${revBox}${advice}
+          <div class="levels">
+            <div class="lv lv-sup"><span>แนวรับ</span><b>${fmt(r.support)}</b></div>
+            <div class="lv lv-res"><span>แนวต้าน</span><b>${fmt(r.resistance)}</b></div>
+            <div class="lv lv-stop"><span>ตัดขาดทุน</span><b>${fmt(r.stop_suggest)}</b></div>
+            <div class="lv lv-tgt"><span>เป้าหมาย</span><b>${fmt(r.target_suggest)}</b></div>
+          </div>
+          ${rangeBar}
+        </div>
+        <div>
+          ${sparkSvg(r)}
+          <div class="rsix" style="margin-top:14px">
+            <div class="rsix-lbl"><span>RSI(14) ${rsiTag}</span><b>${fmt(r.rsi,1)}</b></div>
+            <div class="rsix-bar"><i style="left:${rsiPos.toFixed(1)}%"></i></div>
+            <div class="rsix-zone"><span>◀ Oversold 30</span><span>Overbought 70 ▶</span></div>
+          </div>
+          <div class="stats" style="margin-top:12px">
+            <div><span>ปิดก่อนหน้า:</span> <b>${fmt(r.sess_prev ?? r.prev_close)}</b></div>
+            <div><span>วอลุ่ม:</span> <b>${fmt(r.vol_ratio)}x</b></div>
+            <div><span>EMA20:</span> <b>${fmt(r.ema20)}</b></div>
+            <div><span>EMA50:</span> <b>${fmt(r.ema50)}</b></div>
+          </div>
+          ${pred}
+        </div>
+      </div>
+    </div>
+
+    ${(r.trapped || r.holders)?`<div class="fd-sec">
+      <div class="fd-h">👥 ต้นทุนตลาด & ผู้ถือหุ้น</div>
+      <div class="fd-hint">ใครติดดอย ใครมีกำไร และเงินใหญ่ถือมากแค่ไหน</div>
+      <div class="fd-charts">
+        ${r.trapped?`<div>${trapBlock(r, px)}</div>`:''}
+        ${r.holders?`<div>${holdBlock(r)}</div>`:''}
+      </div></div>`:''}
+
+    ${sigs?`<div class="fd-sec">
+      <div class="fd-h">📡 สัญญาณเทคนิคทั้งหมด</div>
+      <div class="fd-hint">${(r.signals||[]).length} สัญญาณที่ระบบตรวจพบ</div>
+      <div class="sigs" style="border-top:none;padding-top:0">${sigs}</div></div>`:''}`;
+  } else {
+    techHtml = `<div class="fd-sec"><div class="fd-hint">
+      ⚠️ วิเคราะห์เทคนิคไม่สำเร็จ${ana&&ana.error?' — '+escHtml(ana.error):''} (แสดงเฉพาะข้อมูลพื้นฐาน)</div></div>`;
   }
 
-  const r = results[t] || {};
-  const chg = (liveQuotes[t]?.chg ?? r.change_pct);
-  const px  = (r.price != null ? r.price : j.price);
-  const up  = (chg ?? 0) >= 0;
-  const sa  = secArt(r.ticker ? r : {ticker:t, sector:j.sector});
-
-  const metrics = (j.metrics||[]).map(m=>`<div class="fd-m ${m.tone}">
-    <div class="k">${escHtml(m.label)}</div>
-    <div class="v">${escHtml(m.value)}</div>
-    <div class="n">${escHtml(m.note)}</div>
-  </div>`).join('');
-
-  const a = j.annual || {};
-  const charts = [
-    fdChart('รายได้ (Revenue)', 'ยอดขายรวมต่อปี', a.revenue, 'rev'),
-    fdChart('กระแสเงินสดอิสระ (FCF)', 'เงินสดที่เหลือหลังลงทุน', a.fcf, 'fcf'),
-    fdChart('กำไรสุทธิ (Net Income)', 'กำไรหลังหักทุกอย่าง', a.net_income, 'ni'),
-    fdChart('กำไรต่อหุ้น (EPS)', 'กำไรหารด้วยจำนวนหุ้น', a.eps, 'eps'),
-  ].filter(Boolean).join('');
-  const nYears = (a.revenue || a.fcf || []).length;
+  // ---------- ส่วนพื้นฐาน ----------
+  let fundHtml = '';
+  if(j){
+    const metrics = (j.metrics||[]).map(m=>`<div class="fd-m ${m.tone}">
+      <div class="k">${escHtml(m.label)}</div><div class="v">${escHtml(m.value)}</div>
+      <div class="n">${escHtml(m.note)}</div></div>`).join('');
+    const a = j.annual || {};
+    const charts = [
+      fdChart('รายได้ (Revenue)', 'ยอดขายรวมต่อปี', a.revenue, 'rev'),
+      fdChart('กระแสเงินสดอิสระ (FCF)', 'เงินสดที่เหลือหลังลงทุน', a.fcf, 'fcf'),
+      fdChart('กำไรสุทธิ (Net Income)', 'กำไรหลังหักทุกอย่าง', a.net_income, 'ni'),
+      fdChart('กำไรต่อหุ้น (EPS)', 'กำไรหารด้วยจำนวนหุ้น', a.eps, 'eps'),
+    ].filter(Boolean).join('');
+    const nY = (a.revenue || a.fcf || []).length;
+    fundHtml = `
+      <div class="fd-sec">
+        <div class="fd-h">📋 ข้อมูลพื้นฐาน — สรุปแบบเข้าใจง่าย</div>
+        <div class="fd-hint">อ่านมุมมองคร่าวๆ จากตัวเลขทุกหมวด — ไม่ใช่คำสั่งซื้อขาย</div>
+        <div class="fd-grid">${metrics}</div>
+      </div>
+      ${charts?`<div class="fd-sec">
+        <div class="fd-h">📊 กราฟแท่งรายปี</div>
+        <div class="fd-hint">ย้อนหลัง ${nY} ปีตามที่มีในงบ</div>
+        <div class="fd-charts">${charts}</div></div>`:''}`;
+  }
 
   box.innerHTML = `
     <div class="fd-top">
       <button class="fd-back" onclick="closeFund()">← กลับ</button>
       <div>
-        <div class="fd-name">${escHtml(j.name)}</div>
-        <div class="fd-sub">${escHtml(t)}${j.exchange?' · '+escHtml(j.exchange):''}${j.industry?' · '+escHtml(j.industry):''}</div>
+        <div class="fd-name">${escHtml(name)}</div>
+        <div class="fd-sub">${escHtml(t)}${j&&j.exchange?' · '+escHtml(j.exchange):''}${j&&j.industry?' · '+escHtml(j.industry):''}</div>
+        ${sa.tag}
       </div>
       <div class="fd-px">
         <b>${fmt(px)}</b>
         ${chg!=null?`<div class="chg ${up?'up':'down'}" style="margin:0">${up?'+':''}${fmt(chg)}% วันนี้</div>`:''}
+        <div style="margin-top:6px">${ohLineHtml(r, lq)}</div>
       </div>
     </div>
 
-    <div class="fd-sec">
-      <div class="fd-h">📋 สรุปแบบเข้าใจง่าย</div>
-      <div class="fd-hint">อ่านมุมมองคร่าวๆ จากตัวเลขทุกหมวด — ไม่ใช่คำสั่งซื้อขาย</div>
-      <div class="fd-grid">${metrics}</div>
+    <div class="fd-acts">
+      ${inList ? '<span class="fd-inlist">✅ อยู่ในวอทช์ลิสต์แล้ว</span>'
+               : `<button class="btn-blue" onclick="addFromStock('${t}')">＋ เพิ่มเข้าวอทช์ลิสต์</button>`}
+      <button class="ai-btn" style="margin:0;width:auto" id="aib-fd-${t}"
+        onclick="aiFromStock('${t}')">🤖 AI วิเคราะห์เจาะลึก (ฟรี)</button>
+    </div>
+    <div id="ai-fd-${t}" style="display:none"></div>
+
+    ${techHtml}
+    ${fundHtml}
+
+    <div class="fd-sec" id="fdNews-${t}">
+      <div class="fd-h">📰 ข่าวล่าสุดของ ${escHtml(t)}</div>
+      <div class="fd-hint">⏳ กำลังดึงข่าวและแปลไทย...</div>
     </div>
 
-    ${charts?`<div class="fd-sec">
-      <div class="fd-h">📊 กราฟแท่งรายปี</div>
-      <div class="fd-hint">ย้อนหลัง ${nYears} ปีตามที่มีในงบ (ข้อมูลจาก Yahoo Finance)</div>
-      <div class="fd-charts">${charts}</div>
-    </div>`:''}
-
-    <div class="fd-note">ℹ️ ข้อมูลพื้นฐานจาก Yahoo Finance (งบการเงินอัปเดตรายไตรมาส อาจช้ากว่าประกาศจริงเล็กน้อย)
+    <div class="fd-note">ℹ️ ข้อมูลจาก Yahoo Finance และ SEC · งบการเงินอัปเดตรายไตรมาส
       · คำอธิบายเป็นการตีความตัวเลขตามเกณฑ์ทั่วไป ใช้ประกอบการตัดสินใจ ไม่ใช่คำแนะนำการลงทุน</div>`;
+
+  loadStockNews(t);   // ข่าวโหลดตามหลัง ไม่หน่วงหน้าจอ
+}
+
+// เพิ่มหุ้นเข้าวอทช์ลิสต์จากหน้ารวมข้อมูล
+async function addFromStock(t){
+  await getWatchlist();
+  if(watchlist.includes(t)){ toast('มีอยู่แล้วในวอทช์ลิสต์'); return; }
+  watchlist.push(t); saveWatchlist();
+  toast('✅ เพิ่ม ' + t + ' แล้ว');
+  try{
+    const r = await (await fetchWithTimeout('/api/analyze/'+encodeURIComponent(t), 120000)).json();
+    results[t] = r; await fetchQuotes(); render();
+  }catch(e){}
+  openStock(t);   // วาดใหม่ให้ปุ่มเปลี่ยนเป็น "อยู่ในวอทช์ลิสต์แล้ว"
+}
+
+// AI วิเคราะห์จากหน้ารวมข้อมูล (ใช้ endpoint เดียวกับปุ่มบนการ์ด)
+async function aiFromStock(t){
+  const btn = document.getElementById('aib-fd-'+t);
+  const box = document.getElementById('ai-fd-'+t);
+  if(!btn || !box) return;
+  btn.disabled = true; btn.textContent = '🤖 กำลังวิเคราะห์... (~30-60 วิ)';
+  box.style.display = 'block';
+  box.innerHTML = '<div class="ai-box"><span class="ai-err">⏳ AI กำลังอ่านข้อมูลทุกมิติของ '+escHtml(t)+'...</span></div>';
+  try{
+    const j = await (await fetchWithTimeout('/api/ai/'+encodeURIComponent(t), 180000)).json();
+    if(j.ok){
+      box.innerHTML = '<div class="ai-box"><div class="ai-head"><span class="ai-title">🤖 บทวิเคราะห์ AI — '+escHtml(t)+'</span>'
+        + '<span class="ai-meta">'+escHtml(j.model||'')+(j.cached?' · จากแคช':'')+'</span></div>'
+        + mdLite(j.analysis) + '</div>';
+    } else {
+      box.innerHTML = '<div class="ai-box"><span class="ai-err">⚠️ '+escHtml(j.error||'วิเคราะห์ไม่สำเร็จ')+'</span></div>';
+    }
+  }catch(e){
+    box.innerHTML = '<div class="ai-box"><span class="ai-err">⚠️ หมดเวลารอ — ลองใหม่อีกครั้ง</span></div>';
+  }
+  btn.disabled = false; btn.textContent = '🤖 AI วิเคราะห์เจาะลึก (ฟรี)';
+}
+
+// ข่าวเฉพาะหุ้นตัวนี้ (ขึ้นก่อน) + ข่าวตลาดที่เกี่ยวข้อง
+async function loadStockNews(t){
+  const el = document.getElementById('fdNews-'+t);
+  if(!el) return;
+  try{
+    const j = await (await fetchWithTimeout('/api/news?tickers='+encodeURIComponent(t), 90000)).json();
+    if(!el.isConnected) return;
+    const items = j.items || [];
+    const own = items.filter(n=>n.ticker === t);
+    const list = (own.length ? own : items).slice(0, 6);
+    if(!list.length){
+      el.innerHTML = `<div class="fd-h">📰 ข่าวล่าสุดของ ${escHtml(t)}</div>
+        <div class="fd-hint">ไม่พบข่าวที่เกี่ยวข้องในช่วงนี้</div>`;
+      return;
+    }
+    el.innerHTML = `<div class="fd-h">📰 ข่าวล่าสุดของ ${escHtml(t)}</div>
+      <div class="fd-hint">${own.length ? 'ข่าวที่เกี่ยวกับหุ้นตัวนี้โดยตรง' : 'ไม่มีข่าวเฉพาะตัว — แสดงข่าวตลาดที่เกี่ยวข้อง'}</div>
+      <div class="nlist">${list.map((n,i)=>newsItem(n, 9000+i)).join('')}</div>`;
+  }catch(e){
+    if(el.isConnected) el.innerHTML = `<div class="fd-h">📰 ข่าวล่าสุดของ ${escHtml(t)}</div>
+      <div class="fd-hint">โหลดข่าวไม่สำเร็จ</div>`;
+  }
 }
 
 // ===== ลายกราฟฟิกประจำกลุ่มธุรกิจ =====
