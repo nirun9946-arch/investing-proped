@@ -108,6 +108,13 @@ def ai_available():
     return _provider()[0] is not None
 
 
+def has_cached(ticker):
+    """มีผลวิเคราะห์ที่ยังไม่หมดอายุอยู่แล้วหรือไม่ — ใช้ยกเว้นการนับโควตา
+    เพราะการอ่านจากแคชไม่ได้เรียก AI จริง"""
+    c = _cache.get(ticker)
+    return bool(c and time.time() - c[0] < AI_TTL)
+
+
 def _compact_payload(r, smart=None, insider=None, news_items=None):
     """คัดเฉพาะข้อมูลที่มีนัยจากผล analyze — ประหยัด token และกันข้อมูลรก"""
     vp = r.get("vp") or {}

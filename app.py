@@ -340,13 +340,66 @@ def api_fundamentals(ticker):
         return jsonify({"ok": False, "error": f"ดึงข้อมูลพื้นฐานไม่สำเร็จ: {str(e)[:120]}"}), 500
 
 
+# ----------------------------------------------------------------------
+# จำกัดการเรียก AI — จำเป็นเมื่อเปิดเว็บสาธารณะ เพราะทุกคนใช้คีย์ของเจ้าของเว็บ
+# ถ้าไม่จำกัด คนเดียวกดรัวก็ทำให้โควตาหมดทั้งวัน (หรือโดนคิดเงินถ้าใช้เจ้าที่จ่ายตามใช้)
+# ตั้งค่าได้ผ่าน env: AI_LIMIT_PER_HOUR (ต่อ IP), AI_LIMIT_PER_DAY (รวมทั้งเว็บ)
+# ----------------------------------------------------------------------
+AI_PER_IP_HOUR = int(os.environ.get("AI_LIMIT_PER_HOUR", "12"))
+AI_PER_DAY = int(os.environ.get("AI_LIMIT_PER_DAY", "600"))
+_ai_hits = {}          # ip -> [timestamps]
+_ai_day = {"date": None, "n": 0}
+_ai_lock = threading.Lock()
+
+
+def _client_ip():
+    fwd = request.headers.get("X-Forwarded-For", "")
+    return (fwd.split(",")[0].strip() if fwd else request.remote_addr) or "?"
+
+
+def _ai_quota_check():
+    """คืน None ถ้าผ่าน, หรือ (ข้อความ, วินาทีที่ต้องรอ) ถ้าเกินโควตา"""
+    import time as _t
+    from datetime import date as _d
+    now = _t.time()
+    with _ai_lock:
+        today = str(_d.today())
+        if _ai_day["date"] != today:
+            _ai_day["date"], _ai_day["n"] = today, 0
+        if _ai_day["n"] >= AI_PER_DAY:
+            return ("โควตา AI ของเว็บวันนี้เต็มแล้ว (ใช้ร่วมกันทุกคน) — "
+                    "ลองใหม่พรุ่งนี้ หรือรันโปรแกรมในเครื่องตัวเองเพื่อใช้คีย์ของคุณเอง"), 0
+        ip = _client_ip()
+        hits = [t for t in _ai_hits.get(ip, []) if now - t < 3600]
+        if len(hits) >= AI_PER_IP_HOUR:
+            wait = int(3600 - (now - hits[0]))
+            return (f"คุณกดวิเคราะห์ครบ {AI_PER_IP_HOUR} ครั้งในชั่วโมงนี้แล้ว — "
+                    f"รออีก {max(1, wait // 60)} นาทีแล้วลองใหม่"), wait
+        hits.append(now)
+        _ai_hits[ip] = hits
+        _ai_day["n"] += 1
+        if len(_ai_hits) > 500:      # กันหน่วยความจำบวมเมื่อมีผู้ใช้เยอะ
+            for k in [k for k, v in _ai_hits.items() if not v or now - v[-1] > 3600]:
+                _ai_hits.pop(k, None)
+    return None
+
+
 @app.route("/api/ai/<ticker>")
 def api_ai(ticker):
-    """AI วิเคราะห์หุ้นรายตัวด้วย Claude — รวมข้อมูลทุกมิติที่ระบบมี"""
+    """AI วิเคราะห์หุ้นรายตัว — รวมข้อมูลทุกมิติที่ระบบมี"""
     ticker = ticker.strip().upper()
     force = request.args.get("refresh") == "1"
     if not ai_mod.ai_available():
         return jsonify(ai_mod.analyze_with_ai(ticker, {})), 503
+    # ผลที่แคชไว้แล้ว (อายุไม่เกิน 1 ชม.) ไม่ต้องเสียโควตา — ปล่อยผ่านได้เลย
+    if not force and not ai_mod.has_cached(ticker):
+        over = _ai_quota_check()
+        if over:
+            return jsonify({"ok": False, "error": over[0], "rate_limited": True}), 429
+    elif force:
+        over = _ai_quota_check()
+        if over:
+            return jsonify({"ok": False, "error": over[0], "rate_limited": True}), 429
     try:
         r = core.analyze(ticker, read_config())
         smart = insider_sum = None
