@@ -332,6 +332,27 @@
     padding:4px 7px;width:80px;font-size:.84rem;outline:none;text-align:right}
   .alloc input.tgt{width:52px}
   .alloc input:focus{border-color:var(--blue)}
+  /* ===== เครื่องคำนวณทุนเฉลี่ยใหม่ (ถัวเฉลี่ย) ===== */
+  .avgc{padding:12px 14px;border-radius:var(--r-block);background:var(--card2);
+    border:1px solid var(--border);font-size:.85rem}
+  .avgc-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .avgc-f{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .avgc-f span{font-size:.72rem;color:var(--muted);font-weight:600}
+  .avgc-f input{background:var(--card);border:1px solid var(--border);color:var(--text);
+    border-radius:9px;padding:7px 10px;font-size:.92rem;font-weight:700;width:100%;
+    font-variant-numeric:tabular-nums}
+  .avgc-f input:focus{border-color:var(--purple-hi);outline:none}
+  .avgc-sep{display:flex;align-items:center;gap:8px;margin:12px 0 10px;color:var(--muted);
+    font-size:.76rem;font-weight:700}
+  .avgc-sep::before,.avgc-sep::after{content:'';flex:1;height:1px;background:var(--border)}
+  .avgc-out{margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+  .avgc-o{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:9px 11px}
+  .avgc-o.hi{border-color:rgba(115,66,226,.5);background:var(--purple-bg)}
+  .avgc-o span{display:block;font-size:.7rem;color:var(--muted);font-weight:600}
+  .avgc-o b{font-size:1.05rem;font-variant-numeric:tabular-nums}
+  .avgc-o.hi b{color:var(--purple-hi)}
+  .avgc-note{margin-top:10px;font-size:.78rem;line-height:1.55;color:var(--muted)}
+  .avgc-note b{color:var(--text)}
   .abar{height:9px;border-radius:5px;background:var(--border);overflow:hidden;margin-bottom:6px}
   .abar i{display:block;height:100%;border-radius:5px 0 0 5px;transition:.3s}
   .atext{line-height:1.5}
@@ -1224,8 +1245,15 @@ function allocOut(r){
     const shares = r.price > 0 ? Math.floor(remain / r.price * 100) / 100 : 0;
     msg = '— เติมได้อีก <b class="up">' + fmt(remain) + '</b>' + (shares >= 0.01 ? ' (~' + shares + ' หุ้น @ ราคาปัจจุบัน)' : '');
   }
+  // สัดส่วนเทียบ "เฉพาะเงินที่ลงหุ้นแล้ว" (ไม่รวมเงินสด) — ตรงกับคอลัมน์ Position Ratio ของโบรก
+  const invested = Object.values(positions || {}).reduce((a, x) => a + (x.hold || 0), 0);
+  const ratio = invested > 0 ? (hold / invested * 100) : 0;
+  const ratioTxt = (invested > 0 && hold > 0)
+    ? ' · <span class="conf" style="margin-left:0">สัดส่วนในหุ้น <b style="color:var(--text)">'
+      + ratio.toFixed(2) + '%</b></span>' : '';
   return '<div class="abar"><i style="width:' + fill + '%;background:' + barColor + '"></i></div>' +
-    '<div class="atext">ถืออยู่ <b>' + curPct.toFixed(1) + '%</b> / เป้า ' + target + '% ' + msg + '</div>';
+    '<div class="atext">ถืออยู่ <b>' + curPct.toFixed(1) + '%</b> ของพอร์ตรวม / เป้า ' + target + '% '
+    + msg + ratioTxt + '</div>';
 }
 // ===== ภาพรวมพอร์ต: โดนัทสัดส่วนสินทรัพย์จากมูลค่าถือครองจริง =====
 const OV_COLORS = ['#3b82f6','#34d399','#fb923c','#a855f7','#f472b6','#22d3ee','#facc15','#64748b'];
@@ -1395,6 +1423,106 @@ function ohLineHtml(r, lq){
   }
   return `<div class="ext">${icon} ${label}: <b>${fmt(o.price)}</b> ` +
     `<span class="${pu?'up':'down'}">${pu?'+':''}${fmt(o.chg)}%</span>${ref}${tail}</div>`;
+}
+
+// ===== เครื่องคำนวณทุนเฉลี่ยใหม่ =====
+// "ถ้าทุนเดิมเท่านี้ ซื้อเพิ่มที่ราคานี้ ทุนจะเป็นเท่าไหร่"
+// เก็บจำนวนหุ้น/ทุนเดิมไว้ใน positions[t] เพื่อไม่ต้องพิมพ์ซ้ำทุกครั้ง
+function avgCalcBlock(r){
+  const t = r.ticker, p = positions[t] || {};
+  const px = (liveQuotes[t] && liveQuotes[t].price != null) ? liveQuotes[t].price : r.price;
+  const qty = p.qty != null ? p.qty : '';
+  const avg = p.avg != null ? p.avg : '';
+  const f = (id, label, val, ph, step) =>
+    `<label class="avgc-f"><span>${label}</span>
+      <input type="number" min="0" step="${step||'any'}" id="${id}-${t}" value="${val}"
+        placeholder="${ph}" oninput="calcAvg('${t}')"></label>`;
+  return `<div class="avgc">
+    <div class="avgc-row">
+      ${f('acQty', 'หุ้นที่ถืออยู่ตอนนี้', qty, 'เช่น 2')}
+      ${f('acAvg', 'ทุนเฉลี่ยเดิม ($/หุ้น)', avg, 'เช่น 887.95')}
+    </div>
+    <div class="avgc-sep">จะซื้อเพิ่ม</div>
+    <div class="avgc-row">
+      ${f('acAddQty', 'ซื้อเพิ่มกี่หุ้น', '', 'เช่น 1')}
+      ${f('acAddPx', 'ที่ราคา ($/หุ้น)', px != null ? Number(px).toFixed(2) : '', 'ราคาปัจจุบัน')}
+      ${f('acAddCash', 'หรือใช้เงิน ($)', '', 'ระบบคิดหุ้นให้')}
+    </div>
+    <div id="acOut-${t}"></div>
+  </div>`;
+}
+
+// คำนวณสด ๆ ทุกครั้งที่พิมพ์ + จำค่าทุนเดิมไว้ใช้รอบหน้า
+function calcAvg(t, from){
+  const g = id => { const e = document.getElementById(id + '-' + t);
+    return e ? parseFloat(e.value) : NaN; };
+  const set = (id, v) => { const e = document.getElementById(id + '-' + t);
+    if(e && document.activeElement !== e) e.value = v; };
+  const out = document.getElementById('acOut-' + t);
+  if(!out) return;
+
+  const qty = g('acQty') || 0, avg = g('acAvg') || 0;
+  const addPx = g('acAddPx') || 0;
+  let addQty = g('acAddQty');
+  const cash = g('acAddCash');
+
+  // กรอกเป็นเงิน → แปลงเป็นจำนวนหุ้นให้ (และกลับกัน) เลือกฝั่งที่เพิ่งพิมพ์เป็นหลัก
+  const cashActive = document.activeElement === document.getElementById('acAddCash-' + t);
+  if(cashActive && isFinite(cash) && addPx > 0){
+    addQty = cash / addPx;
+    set('acAddQty', (Math.round(addQty * 10000) / 10000));
+  } else if(isFinite(addQty) && addPx > 0){
+    set('acAddCash', (Math.round(addQty * addPx * 100) / 100));
+  }
+  if(!isFinite(addQty)) addQty = 0;
+
+  // จำทุนเดิมไว้ (ไม่ต้องพิมพ์ซ้ำ) — ไม่แตะ hold/target ที่ใช้คำนวณสัดส่วน
+  if(!positions[t]) positions[t] = {hold: 0, target: 10};
+  if(isFinite(g('acQty'))) positions[t].qty = g('acQty');
+  if(isFinite(g('acAvg'))) positions[t].avg = g('acAvg');
+  savePort();
+
+  if(!(qty > 0 && avg > 0) && !(addQty > 0 && addPx > 0)){
+    out.innerHTML = '<div class="avgc-note">💡 กรอกหุ้นที่ถือ + ทุนเฉลี่ยเดิม แล้วใส่จำนวน (หรือเงิน) ที่จะซื้อเพิ่ม</div>';
+    return;
+  }
+
+  const oldCost = qty * avg;
+  const addCost = addQty * addPx;
+  const newQty  = qty + addQty;
+  const newAvg  = newQty > 0 ? (oldCost + addCost) / newQty : 0;
+  const diff    = avg > 0 ? newAvg - avg : 0;
+  const diffPct = avg > 0 ? diff / avg * 100 : 0;
+
+  const r = results[t] || _stockPageData[t] || {};
+  const cur = (liveQuotes[t] && liveQuotes[t].price != null) ? liveQuotes[t].price : r.price;
+  let pnlHtml = '';
+  if(cur != null && newQty > 0){
+    const val = newQty * cur, pnl = val - (oldCost + addCost);
+    const pu = pnl >= 0;
+    const pct = (oldCost + addCost) > 0 ? pnl / (oldCost + addCost) * 100 : 0;
+    const upNeed = newAvg > 0 ? (newAvg / cur - 1) * 100 : 0;
+    pnlHtml = `<div class="avgc-note">
+      ที่ราคาปัจจุบัน <b>${fmt(cur)}</b> → มูลค่ารวม <b>${fmt(val)}</b>
+      · ${pu ? 'กำไร' : 'ขาดทุน'} <b class="${pu?'up':'down'}">${pu?'+':''}${fmt(pnl)}</b>
+      <span class="${pu?'up':'down'}">(${pu?'+':''}${fmt(pct)}%)</span>
+      ${upNeed > 0.05
+        ? `<br>ราคาต้องขึ้นอีก <b>${fmt(upNeed)}%</b> ถึงจะเท่าทุนใหม่`
+        : (upNeed < -0.05 ? '<br>ราคาปัจจุบัน<b class="up">สูงกว่าทุนใหม่</b>แล้ว' : '')}
+    </div>`;
+  }
+
+  const dirTxt = avg > 0
+    ? (diff < -0.005 ? `<span class="up">ถัวลง ${fmt(Math.abs(diffPct))}%</span>`
+      : diff > 0.005 ? `<span class="down">ถัวขึ้น ${fmt(diffPct)}%</span>` : 'เท่าเดิม')
+    : '—';
+
+  out.innerHTML = `<div class="avgc-out">
+      <div class="avgc-o hi"><span>ทุนเฉลี่ยใหม่</span><b>${fmt(newAvg)}</b></div>
+      <div class="avgc-o"><span>เทียบทุนเดิม</span><b style="font-size:.92rem">${dirTxt}</b></div>
+      <div class="avgc-o"><span>หุ้นรวม</span><b>${fmt(newQty, newQty % 1 ? 4 : 0)}</b></div>
+      <div class="avgc-o"><span>เงินลงทุนรวม</span><b>${fmt(oldCost + addCost)}</b></div>
+    </div>${pnlHtml}`;
 }
 
 // ===== Volume Profile: โซนราคาที่ซื้อขายหนาแน่น (ใช้ทั้งในการ์ดและหน้ารวมข้อมูล) =====
@@ -1688,6 +1816,12 @@ async function openStock(t){
       <div class="sigs" style="border-top:none;padding-top:0">${sigs}</div></div>`:''}
 
     <div class="fd-sec">
+      <div class="fd-h">🧮 ถ้าซื้อเพิ่ม ทุนเฉลี่ยจะเป็นเท่าไหร่</div>
+      <div class="fd-hint">กรอกทุนเดิมกับจำนวนที่จะซื้อเพิ่ม ระบบคิดทุนใหม่ให้ทันที (จำค่าไว้ให้ ไม่ต้องพิมพ์ซ้ำ)</div>
+      ${avgCalcBlock(r)}
+    </div>
+
+    <div class="fd-sec">
       <div class="fd-h">💼 คำนวณสัดส่วนพอร์ต</div>
       <div class="fd-hint">กรอกมูลค่าที่ถืออยู่ ระบบคำนวณว่าควรเติมอีกเท่าไรตามเป้าที่ตั้งไว้</div>
       <div id="fdAlloc-${t}">${allocBlock(r)}</div>
@@ -1757,6 +1891,7 @@ async function openStock(t){
     <div class="fd-note">ℹ️ ข้อมูลจาก Yahoo Finance และ SEC · งบการเงินอัปเดตรายไตรมาส
       · คำอธิบายเป็นการตีความตัวเลขตามเกณฑ์ทั่วไป ใช้ประกอบการตัดสินใจ ไม่ใช่คำแนะนำการลงทุน</div>`;
 
+  calcAvg(t);          // แสดงผลทุนเฉลี่ยจากค่าที่จำไว้ (ถ้ามี)
   loadStockNews(t);    // ข่าวโหลดตามหลัง ไม่หน่วงหน้าจอ
   loadStockSmart(t);   // สัญญาณเงินใหญ่ (สถาบัน/กองทุน/ผู้บริหาร)
 }
@@ -3037,10 +3172,36 @@ setInterval(()=>loadMarket(true), 15000);
 // กลับมาที่แท็บ → ดึงใหม่ทันที ไม่ต้องรอรอบถัดไป
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) loadMarket(); });
 
+// นำเข้าพอร์ตจากลิงก์: #import=<JSON encoded>
+// ใช้ย้ายพอร์ตข้ามเบราว์เซอร์/เครื่องได้ (ข้อมูลพอร์ตเก็บใน localStorage ซึ่งแยกตามเบราว์เซอร์)
+function importPortFromUrl(){
+  const m = String(location.hash || '').match(/[#&]import=([^&]+)/);
+  if(!m) return false;
+  let d;
+  try{ d = JSON.parse(decodeURIComponent(m[1])); }catch(e){ return false; }
+  if(!d || !Array.isArray(d.watchlist)) return false;
+
+  const slot = (d.slot != null) ? Math.max(0, d.slot|0) : ports.length;
+  while(ports.length <= slot) ports.push(emptyPort(ports.length + 1));
+  ports[slot] = {
+    name: d.name || ('พอร์ต ' + (slot + 1)),
+    watchlist: d.watchlist.map(s=>String(s).toUpperCase()),
+    port_total: parseFloat(d.port_total) || 0,
+    positions: d.positions || {},
+  };
+  activePort = slot;
+  loadActiveIntoGlobals();
+  persistPorts();
+  history.replaceState(null, '', location.pathname + location.search);   // ล้าง hash กันนำเข้าซ้ำ
+  toast('✅ นำเข้า "' + ports[slot].name + '" เรียบร้อย (' + ports[slot].watchlist.length + ' ตัว)', 5000);
+  return true;
+}
+
 (async ()=>{
   syncIntro('stocks');            // การ์ดต้อนรับมือใหม่ — โชว์เฉพาะเครื่องที่ยังไม่เคยกด "เข้าใจแล้ว"
   loadMarket();                   // โหลดทันที ไม่ต้องรอสแกนหุ้นเสร็จ
   await initPorts();
+  importPortFromUrl();            // ถ้ามาจากลิงก์นำเข้า ให้สลับไปพอร์ตนั้นเลย
   updateAuthUI();
   restoreSession();
   scanAll();
