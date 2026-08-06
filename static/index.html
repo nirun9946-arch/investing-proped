@@ -332,6 +332,32 @@
     padding:4px 7px;width:80px;font-size:.84rem;outline:none;text-align:right}
   .alloc input.tgt{width:52px}
   .alloc input:focus{border-color:var(--blue)}
+  /* ===== สรุปผลประกอบการหลังประกาศ ===== */
+  .ern{padding:14px;border-radius:var(--r-block);background:var(--card2);
+    border:1px solid var(--border);border-left:3px solid var(--muted)}
+  .ern.good{border-left-color:var(--green)} .ern.ok{border-left-color:var(--blue)}
+  .ern.warn{border-left-color:var(--yellow)} .ern.bad{border-left-color:var(--red)}
+  .ern-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+  .ern-badge{font-size:.82rem;font-weight:800;padding:4px 12px;border-radius:10px;border:1px solid}
+  .ern.good .ern-badge{background:var(--green-bg);color:var(--green);border-color:var(--green)}
+  .ern.ok .ern-badge{background:var(--blue-bg);color:var(--blue);border-color:var(--blue)}
+  .ern.warn .ern-badge{background:var(--yellow-bg);color:var(--yellow);border-color:var(--yellow)}
+  .ern.bad .ern-badge{background:var(--red-bg);color:var(--red);border-color:var(--red)}
+  .ern-date{font-size:.78rem;color:var(--muted)}
+  .ern-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:10px}
+  .ern-c{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:9px 11px}
+  .ern-c span{display:block;font-size:.7rem;color:var(--muted);font-weight:600}
+  .ern-c b{font-size:1rem;font-variant-numeric:tabular-nums}
+  .ern-sum{font-size:.85rem;line-height:1.65;color:var(--text);opacity:.95}
+  .ern-hist{display:flex;gap:5px;margin-top:12px;align-items:flex-end;flex-wrap:wrap}
+  .ern-q{flex:1;min-width:44px;text-align:center;background:var(--card);
+    border:1px solid var(--border);border-radius:9px;padding:6px 3px}
+  .ern-q.beat{border-color:rgba(52,211,153,.5)} .ern-q.miss{border-color:rgba(248,113,113,.5)}
+  .ern-q .qd{font-size:.6rem;color:var(--muted)}
+  .ern-q .qs{font-size:.8rem;font-weight:800;font-variant-numeric:tabular-nums}
+  .ern-q.beat .qs{color:var(--green)} .ern-q.miss .qs{color:var(--red)}
+  .ern-next{margin-top:10px;font-size:.79rem;color:var(--muted)}
+  .ern-next b{color:var(--purple-hi)}
   /* ===== เครื่องคำนวณทุนเฉลี่ยใหม่ (ถัวเฉลี่ย) ===== */
   .avgc{padding:12px 14px;border-radius:var(--r-block);background:var(--card2);
     border:1px solid var(--border);font-size:.85rem}
@@ -1425,6 +1451,55 @@ function ohLineHtml(r, lq){
     `<span class="${pu?'up':'down'}">${pu?'+':''}${fmt(o.chg)}%</span>${ref}${tail}</div>`;
 }
 
+// ===== สรุปผลประกอบการหลังประกาศ (แปลไทยแล้ว) =====
+async function loadEarnings(t){
+  const el = document.getElementById('fdErn-' + t);
+  if(!el) return;
+  let j;
+  try{
+    j = await (await fetchWithTimeout('/api/earnings/'+encodeURIComponent(t), 90000)).json();
+  }catch(e){ if(el.isConnected) el.innerHTML = ''; return; }
+  if(!el.isConnected) return;
+  if(!j.ok){ el.innerHTML = ''; return; }   // ETF/หุ้นที่ไม่มีงบ — ซ่อนหัวข้อไปเลย
+
+  const L = j.latest;
+  const sp = L.surprise;
+  const spTxt = sp != null ? (sp >= 0 ? '+' : '') + fmt(sp) + '%' : '—';
+  const revYoY = L.revenue_yoy != null
+    ? `<span class="${L.revenue_yoy>=0?'up':'down'}">${L.revenue_yoy>=0?'+':''}${fmt(L.revenue_yoy)}% YoY</span>` : '';
+  const niYoY = L.net_income_yoy != null
+    ? `<span class="${L.net_income_yoy>=0?'up':'down'}">${L.net_income_yoy>=0?'+':''}${fmt(L.net_income_yoy)}% YoY</span>` : '';
+
+  const hist = (j.history||[]).slice().reverse().map(h=>{
+    const beat = (h.surprise||0) > 0;
+    return `<div class="ern-q ${beat?'beat':'miss'}" title="คาด ${h.est} → จริง ${h.actual}">
+      <div class="qd">${h.date.slice(2,7)}</div>
+      <div class="qs">${h.surprise!=null?(h.surprise>=0?'+':'')+h.surprise.toFixed(0)+'%':'-'}</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="fd-h">📊 ผลประกอบการไตรมาสล่าสุด</div>
+    <div class="fd-hint">เทียบกับที่นักวิเคราะห์คาดไว้ — ตัวเลขที่ราคาหุ้นตอบสนองมากที่สุด</div>
+    <div class="ern ${L.tone}">
+      <div class="ern-top">
+        <span class="ern-badge">${escHtml(L.label)}</span>
+        <span class="ern-date">🗓 ประกาศเมื่อ ${escHtml(thDate ? thDate(L.date) : L.date)}</span>
+      </div>
+      <div class="ern-grid">
+        <div class="ern-c"><span>กำไรต่อหุ้น (คาด)</span><b>${fmt(L.est)}</b></div>
+        <div class="ern-c"><span>ออกมาจริง</span><b class="${sp>=0?'up':'down'}">${fmt(L.actual)}</b></div>
+        <div class="ern-c"><span>ต่างจากที่คาด</span><b class="${sp>=0?'up':'down'}">${spTxt}</b></div>
+        ${L.revenue_txt?`<div class="ern-c"><span>รายได้</span><b>${escHtml(L.revenue_txt)}</b> ${revYoY}</div>`:''}
+        ${L.net_income_txt?`<div class="ern-c"><span>กำไรสุทธิ</span><b>${escHtml(L.net_income_txt)}</b> ${niYoY}</div>`:''}
+      </div>
+      <div class="ern-sum">📝 ${escHtml(j.summary_th)}</div>
+      ${hist?`<div class="ern-hist">${hist}</div>
+        <div class="ern-next" style="margin-top:6px">แถบด้านบน = ผลต่างจากที่คาดของ 8 ไตรมาสล่าสุด (เขียว = ทำได้เกินคาด)</div>`:''}
+      ${j.next?`<div class="ern-next">📅 ประกาศงบครั้งถัดไป <b>${escHtml(thDate ? thDate(j.next.date) : j.next.date)}</b>${j.next.est!=null?` · ตลาดคาด EPS <b>${fmt(j.next.est)}</b>`:''}</div>`:''}
+    </div>`;
+}
+
 // ===== เครื่องคำนวณทุนเฉลี่ยใหม่ =====
 // "ถ้าทุนเดิมเท่านี้ ซื้อเพิ่มที่ราคานี้ ทุนจะเป็นเท่าไหร่"
 // เก็บจำนวนหุ้น/ทุนเดิมไว้ใน positions[t] เพื่อไม่ต้องพิมพ์ซ้ำทุกครั้ง
@@ -1808,6 +1883,8 @@ async function openStock(t){
       <div class="fd-hint">ใช้หาแนวรับ-แนวต้านจากวอลุ่มจริง ไม่ใช่จากเส้นที่ลากเอง</div>
       ${vpBlockOf(r)}</div>`:''}
 
+    <div class="fd-sec" id="fdErn-${t}"></div>
+
     <div class="fd-sec" id="fdSmart-${t}"></div>
 
     ${sigs?`<div class="fd-sec">
@@ -1892,6 +1969,7 @@ async function openStock(t){
       · คำอธิบายเป็นการตีความตัวเลขตามเกณฑ์ทั่วไป ใช้ประกอบการตัดสินใจ ไม่ใช่คำแนะนำการลงทุน</div>`;
 
   calcAvg(t);          // แสดงผลทุนเฉลี่ยจากค่าที่จำไว้ (ถ้ามี)
+  loadEarnings(t);     // สรุปผลประกอบการหลังประกาศ
   loadStockNews(t);    // ข่าวโหลดตามหลัง ไม่หน่วงหน้าจอ
   loadStockSmart(t);   // สัญญาณเงินใหญ่ (สถาบัน/กองทุน/ผู้บริหาร)
 }

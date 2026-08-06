@@ -384,6 +384,17 @@ def _ai_quota_check():
     return None
 
 
+@app.route("/api/earnings/<ticker>")
+def api_earnings(ticker):
+    """สรุปผลประกอบการไตรมาสล่าสุด (EPS เทียบที่ตลาดคาด + รายได้/กำไร YoY) ภาษาไทย"""
+    force = request.args.get("refresh") == "1"
+    try:
+        r = fund_mod.get_earnings(ticker, force=force)
+        return jsonify(r), (200 if r.get("ok") else 404)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"ดึงผลประกอบการไม่สำเร็จ: {str(e)[:120]}"}), 500
+
+
 @app.route("/api/ai/<ticker>")
 def api_ai(ticker):
     """AI วิเคราะห์หุ้นรายตัว — รวมข้อมูลทุกมิติที่ระบบมี"""
@@ -422,8 +433,16 @@ def api_ai(ticker):
             } for n in (own + gen)[:6]]
         except Exception:
             pass  # ข้อมูลเสริมล่มไม่ควรทำให้ AI วิเคราะห์ไม่ได้ — ใช้เท่าที่มี
+        earn = None
+        try:
+            e = fund_mod.get_earnings(ticker)
+            if e.get("ok"):
+                earn = {"ประกาศเมื่อ": e["latest"]["date"], "สรุป": e["summary_th"],
+                        "ผลเทียบที่คาด": e["latest"]["label"]}
+        except Exception:
+            pass
         result = ai_mod.analyze_with_ai(ticker, r, smart=smart, insider=insider_sum,
-                                        news_items=news_items, force=force)
+                                        news_items=news_items, earnings=earn, force=force)
         return jsonify(result), (200 if result.get("ok") else 502)
     except Exception as e:
         return jsonify({"ok": False, "error": f"เตรียมข้อมูลไม่สำเร็จ: {str(e)[:120]}"}), 500

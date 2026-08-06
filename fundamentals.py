@@ -290,6 +290,157 @@ def _annual(tk):
     return {k: v for k, v in series.items() if v}
 
 
+_earn_cache = {}      # ticker -> (ts, payload)
+
+
+def _fmt_big(v):
+    """ย่อตัวเลขใหญ่เป็นภาษาคน: 41,456,000,000 → 41.46 พันล้าน"""
+    if v is None:
+        return None
+    a = abs(v)
+    sign = "-" if v < 0 else ""
+    if a >= 1e12:
+        return f"{sign}{a/1e12:.2f} ล้านล้าน"
+    if a >= 1e9:
+        return f"{sign}{a/1e9:.2f} พันล้าน"
+    if a >= 1e6:
+        return f"{sign}{a/1e6:.0f} ล้าน"
+    return f"{sign}{a:,.0f}"
+
+
+def get_earnings(ticker, force=False):
+    """สรุปผลประกอบการไตรมาสล่าสุดหลังประกาศ + สถิติย้อนหลัง (ภาษาไทย)
+
+    ใช้ EPS ที่ตลาดคาด เทียบกับที่ประกาศจริง (surprise%) ซึ่งเป็นตัวที่ราคาหุ้น
+    ตอบสนองมากที่สุด บวกกับรายได้/กำไรของไตรมาสนั้นเทียบปีก่อน
+    """
+    ticker = ticker.strip().upper()
+    now = time.time()
+    c = _earn_cache.get(ticker)
+    if c and not force and now - c[0] < _TTL:
+        return c[1]
+
+    tk = yf.Ticker(ticker)
+    try:
+        ed = tk.earnings_dates
+    except Exception:
+        ed = None
+    if ed is None or getattr(ed, "empty", True):
+        return {"ok": False, "error": f"ไม่มีข้อมูลผลประกอบการของ {ticker}"}
+
+    rows = []
+    for idx, r in ed.iterrows():
+        rows.append({
+            "date": str(idx)[:10],
+            "ts": idx,
+            "est": _num(r.get("EPS Estimate")),
+            "actual": _num(r.get("Reported EPS")),
+            "surprise": _num(r.get("Surprise(%)")),
+        })
+    rows.sort(key=lambda x: x["date"], reverse=True)
+
+    reported = [r for r in rows if r["actual"] is not None]
+    upcoming = [r for r in rows if r["actual"] is None]
+    if not reported:
+        return {"ok": False, "error": f"ยังไม่มีผลประกอบการที่ประกาศแล้วของ {ticker}"}
+
+    last = reported[0]
+    sp = last["surprise"]
+    if sp is None and last["est"]:
+        sp = (last["actual"] / last["est"] - 1) * 100
+
+    if sp is None:
+        label, tone = "ประกาศแล้ว", "info"
+    elif sp >= 10:
+        label, tone = "เกินคาดมาก", "good"
+    elif sp >= 2:
+        label, tone = "ดีกว่าคาด", "good"
+    elif sp > -2:
+        label, tone = "ใกล้เคียงที่คาด", "ok"
+    elif sp > -10:
+        label, tone = "ต่ำกว่าคาด", "warn"
+    else:
+        label, tone = "ต่ำกว่าคาดมาก", "bad"
+
+    # สถิติ: เกินคาดติดต่อกันกี่ไตรมาส + กี่ครั้งจาก 8 ครั้งล่าสุด
+    streak = 0
+    for r in reported:
+        if (r["surprise"] or 0) > 0:
+            streak += 1
+        else:
+            break
+    last8 = reported[:8]
+    beats = sum(1 for r in last8 if (r["surprise"] or 0) > 0)
+
+    # รายได้/กำไรของไตรมาสนั้น เทียบไตรมาสเดียวกันปีก่อน
+    rev = rev_yoy = ni = ni_yoy = None
+    try:
+        q = tk.quarterly_income_stmt
+
+        def pick(name):
+            for i in q.index:
+                if str(i).strip() == name:
+                    return [_num(v) for v in q.loc[i].values]
+            return []
+        rv = pick("Total Revenue")
+        nis = pick("Net Income")
+        if rv:
+            rev = rv[0]
+            if len(rv) >= 5 and rv[4]:
+                rev_yoy = (rv[0] / rv[4] - 1) * 100
+        if nis:
+            ni = nis[0]
+            if len(nis) >= 5 and nis[4]:
+                ni_yoy = (nis[0] / nis[4] - 1) * 100
+    except Exception:
+        pass
+
+    # สรุปเป็นประโยคภาษาคน
+    parts = []
+    if sp is not None:
+        v = "สูงกว่า" if sp > 0 else ("ต่ำกว่า" if sp < 0 else "เท่ากับ")
+        parts.append(f"กำไรต่อหุ้นออกมา {last['actual']:.2f} ดอลลาร์ "
+                     f"{v}ที่ตลาดคาดไว้ ({last['est']:.2f}) {abs(sp):.1f}%")
+    if rev is not None:
+        s = f"รายได้ไตรมาสนี้ {_fmt_big(rev)} ดอลลาร์"
+        if rev_yoy is not None:
+            s += f" {'โต' if rev_yoy >= 0 else 'ลดลง'} {abs(rev_yoy):.1f}% จากไตรมาสเดียวกันปีก่อน"
+        parts.append(s)
+    if ni is not None and ni_yoy is not None:
+        parts.append(f"กำไรสุทธิ {_fmt_big(ni)} ดอลลาร์ "
+                     f"{'โต' if ni_yoy >= 0 else 'ลดลง'} {abs(ni_yoy):.1f}% เทียบปีก่อน")
+    if len(last8) >= 4:
+        parts.append(f"สถิติ 8 ไตรมาสล่าสุด ทำได้เกินคาด {beats} ครั้ง"
+                     + (f" (เกินคาดติดต่อกัน {streak} ไตรมาส)" if streak >= 2 else ""))
+
+    payload = {
+        "ok": True,
+        "ticker": ticker,
+        "latest": {
+            "date": last["date"], "est": last["est"], "actual": last["actual"],
+            "surprise": round(sp, 2) if sp is not None else None,
+            "label": label, "tone": tone,
+            "revenue": rev, "revenue_txt": _fmt_big(rev),
+            "revenue_yoy": round(rev_yoy, 1) if rev_yoy is not None else None,
+            "net_income": ni, "net_income_txt": _fmt_big(ni),
+            "net_income_yoy": round(ni_yoy, 1) if ni_yoy is not None else None,
+        },
+        "summary_th": " · ".join(parts),
+        "beat_streak": streak,
+        "beats_of_8": beats,
+        "history": [{"date": r["date"], "est": r["est"], "actual": r["actual"],
+                     "surprise": round(r["surprise"], 2) if r["surprise"] is not None else None}
+                    for r in reported[:8]],
+        "next": ({"date": upcoming[-1]["date"], "est": upcoming[-1]["est"]}
+                 if upcoming else None),
+    }
+    _earn_cache[ticker] = (now, payload)
+    if len(_earn_cache) > 60:
+        for k in sorted(_earn_cache, key=lambda k: _earn_cache[k][0])[:30]:
+            _earn_cache.pop(k, None)
+    return payload
+
+
 def get_fundamentals(ticker, force=False):
     """คืนข้อมูลพื้นฐานรายตัว + คำอธิบายภาษาไทย + ชุดข้อมูลกราฟรายปี"""
     ticker = ticker.strip().upper()

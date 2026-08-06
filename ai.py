@@ -115,7 +115,7 @@ def has_cached(ticker):
     return bool(c and time.time() - c[0] < AI_TTL)
 
 
-def _compact_payload(r, smart=None, insider=None, news_items=None):
+def _compact_payload(r, smart=None, insider=None, news_items=None, earnings=None):
     """คัดเฉพาะข้อมูลที่มีนัยจากผล analyze — ประหยัด token และกันข้อมูลรก"""
     vp = r.get("vp") or {}
     pred = r.get("prediction")
@@ -183,6 +183,8 @@ def _compact_payload(r, smart=None, insider=None, news_items=None):
         }
     if news_items:
         out["ข่าวล่าสุด"] = news_items[:6]
+    if earnings:
+        out["ผลประกอบการล่าสุด"] = earnings
     return out
 
 
@@ -357,7 +359,8 @@ def _call_deepseek(key, system, user_msg):
         return {"ok": False, "error": f"วิเคราะห์ไม่สำเร็จ: {str(e)[:120]}"}
 
 
-def analyze_with_ai(ticker, r, smart=None, insider=None, news_items=None, force=False):
+def analyze_with_ai(ticker, r, smart=None, insider=None, news_items=None,
+                    earnings=None, force=False):
     """เรียก AI วิเคราะห์ (Gemini/Groq ฟรี → DeepSeek → Claude) — คืน dict {ok, analysis|error, cached, model}
     ถ้าเจ้าแรกโควตาหมดหรือล่ม จะสลับไปเจ้าถัดไปที่มีคีย์ให้อัตโนมัติ"""
     chain = _provider_chain()
@@ -371,7 +374,8 @@ def analyze_with_ai(ticker, r, smart=None, insider=None, news_items=None, force=
 
     from datetime import datetime, timezone, timedelta
     th_time = (datetime.now(timezone.utc) + timedelta(hours=7)).strftime("%d/%m/%Y %H:%M น.")
-    payload = _compact_payload(r, smart=smart, insider=insider, news_items=news_items)
+    payload = _compact_payload(r, smart=smart, insider=insider, news_items=news_items,
+                               earnings=earnings)
     user_msg = (f"วิเคราะห์หุ้น {ticker} จากข้อมูล ณ {th_time} (เวลาไทย) ต่อไปนี้:\n\n"
                 + json.dumps(payload, ensure_ascii=False, default=str))
 
