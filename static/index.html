@@ -161,6 +161,12 @@
   .lrow .lpx{text-align:right;flex:none;line-height:1.3}
   .lrow .lpx b{font-size:1rem;font-weight:800;font-variant-numeric:tabular-nums;display:block}
   .lrow .lpx .lchg{font-size:.8rem;font-weight:700;font-variant-numeric:tabular-nums}
+  /* คอลัมน์ราคาต้องกว้างพอสำหรับบรรทัดที่ยาวสุด ไม่งั้นราคานอกเวลาตกบรรทัดจนแถวสูงเป็น 3 เท่า */
+  .lrow .lpx{flex:0 0 auto;min-width:max-content}
+  .lrow .loh{display:block;font-size:.67rem;color:var(--muted);font-weight:600;margin-top:1px;
+    white-space:nowrap;font-variant-numeric:tabular-nums}
+  /* ต้องทับ .lrow .lpx b ที่เป็น display:block (ของราคาหลัก) ไม่งั้นตัวเลขตกบรรทัด */
+  .lrow .loh b{display:inline;color:var(--text);font-weight:700;font-size:.67rem;margin:0 3px}
   .lrow .lv-badge{flex:none;font-size:.68rem;font-weight:800;padding:3px 8px;border-radius:8px;
     white-space:nowrap}
   .lrow .lflag{position:absolute;top:-5px;right:8px;font-size:.62rem;font-weight:800;
@@ -798,6 +804,10 @@
     #introCard .in-warn{font-size:.73rem;margin-bottom:10px}
     /* กล่องสัญญาณกลับตัว — โชว์ 2 ข้อแรกพอ ที่เหลือดูได้ในหน้ารวมข้อมูล */
     .rev-box .rev-sig:nth-of-type(n+3){display:none}
+    /* แถวรายการบนจอเล็ก — บีบส่วนประกอบให้ราคานอกเวลามีที่พอโดยไม่ดันแถวสูง */
+    .lrow{gap:7px;padding:9px 10px}
+    .lrow .lspark{width:42px;height:22px}
+    .lrow .lv-badge{font-size:.62rem;padding:3px 6px}
     /* ปุ่มพับรายละเอียดรอง — โผล่เฉพาะจอเล็ก */
     .mid-btn{display:flex}
     .mid{display:grid;grid-template-rows:0fr;transition:grid-template-rows .4s var(--ease-spring)}
@@ -1353,6 +1363,12 @@ function verdictThai(v){
 }
 const fmt = (n, d=2) => n==null ? '-' : Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
 
+// วอลุ่ม: ระหว่างตลาดเปิด ตัวเลขนี้ถูกเทียบ "ณ เวลาเดียวกันของวัน" แล้ว ไม่ใช่เทียบกับทั้งวัน
+// ติดสัญลักษณ์ + tooltip ไว้เสมอ ไม่งั้นคนอ่านจะนึกว่าเป็นค่าเทียบทั้งวันเหมือนตอนตลาดปิด
+const VOL_MARK = {clock_matched:' ⏱', elapsed_fraction:' ⏱', last_complete_session:' ⚠'};
+const volMark = r => VOL_MARK[r && r.vol_ratio_basis] || '';
+const volTip  = r => ((r && r.vol_ratio_label) || 'เทียบค่าเฉลี่ย 20 วัน').replace(/"/g,'&quot;');
+
 // ===== พจนานุกรมศัพท์สำหรับมือใหม่: เขียนที่เดียว ใช้ทุกจุดผ่าน gl()/glossify() =====
 const GLOSS = {
   'RSI': 'มาตรวัดความร้อนแรงของราคา 0-100 — เกิน 70 คือคนแห่ซื้อเยอะเกินไป (แพงชั่วคราว) ต่ำกว่า 30 คือคนแห่ขายเยอะเกินไป (ถูกชั่วคราว)',
@@ -1427,27 +1443,38 @@ function priceView(r, lq){
 }
 
 // สร้าง HTML บรรทัดราคานอกเวลา (ใช้ทั้งตอนเรนเดอร์การ์ดและตอน poll เพื่อให้ตรงกันเสมอ)
+// ช่วงเวลานอกตลาดของราคานี้ — ใช้ร่วมกันทั้งการ์ดและแถวรายการ เพื่อให้ป้ายตรงกันเสมอ
+// ดีลเก่าเกิน 1 ชม. = after-hours จบแล้ว → นับเป็นช่วง "โอเวอร์ไนท์"
+function ohPhase(lq, oh){
+  let icon = oh.pre ? '🌅' : '🌆';
+  // label = ใช้ในเนื้อหา (มี tooltip ศัพท์) · labelPlain = ใช้ใน title="" ที่ใส่ HTML ไม่ได้
+  let label = oh.pre ? ('ก่อนเปิดตลาด ('+gl('pre-market')+')') : ('หลังปิดตลาด ('+gl('after-hours')+')');
+  let labelPlain = oh.pre ? 'ก่อนเปิดตลาด (pre-market)' : 'หลังปิดตลาด (after-hours)';
+  let short = oh.pre ? 'ก่อนเปิด' : 'หลังปิด';
+  let lastAt = null;
+  if(lq && lq.ts){
+    const age = Date.now() - Date.parse(String(lq.ts).replace(' ', 'T'));
+    if(isFinite(age) && age > 60*60*1000){
+      const t = String(lq.ts).match(/\d{2}:\d{2}/);
+      icon = '🌃'; label = labelPlain = 'โอเวอร์ไนท์'; short = 'ข้ามคืน';
+      lastAt = t ? t[0] : null;
+    }
+  }
+  return {icon, label, labelPlain, short, lastAt};
+}
+
 function ohLineHtml(r, lq){
   const pv = priceView(r, lq);
   if(!pv.oh) return '';
   const o = pv.oh;
   const pu = o.chg >= 0;
   const ref = (r && r.price != null) ? ` · ราคาปิด session <b>${fmt(r.price)}</b>` : '';
-  let icon = o.pre ? '🌅' : '🌆';
-  let label = o.pre ? ('ก่อนเปิดตลาด ('+gl('pre-market')+')') : ('หลังปิดตลาด ('+gl('after-hours')+')');
-  let tail = '';
-  // ดีลเก่าเกิน 1 ชม. = after-hours จบแล้ว → เข้าสู่ช่วง "โอเวอร์ไนท์"
-  // แสดงราคานอกเวลาล่าสุดตามจริง (ไม่มีประมาณการ) พร้อมเวลาดีลสุดท้าย
-  if(lq && lq.ts){
-    const age = Date.now() - Date.parse(String(lq.ts).replace(' ', 'T'));
-    if(isFinite(age) && age > 60*60*1000){
-      const t = String(lq.ts).match(/\d{2}:\d{2}/);
-      icon = '🌃'; label = 'โอเวอร์ไนท์';
-      tail = `<br><span class="conf" style="margin-left:0">ดีลสุดท้าย ${t?t[0]:''} น. NY — ` +
-        `ตลาดพักอยู่ ราคาจะขยับอีกทีช่วง pre-market (~บ่ายสามไทย)</span>`;
-    }
-  }
-  return `<div class="ext">${icon} ${label}: <b>${fmt(o.price)}</b> ` +
+  const ph = ohPhase(lq, o);
+  const tail = ph.lastAt
+    ? `<br><span class="conf" style="margin-left:0">ดีลสุดท้าย ${ph.lastAt} น. NY — ` +
+      `ตลาดพักอยู่ ราคาจะขยับอีกทีช่วง pre-market (~บ่ายสามไทย)</span>`
+    : '';
+  return `<div class="ext">${ph.icon} ${ph.label}: <b>${fmt(o.price)}</b> ` +
     `<span class="${pu?'up':'down'}">${pu?'+':''}${fmt(o.chg)}%</span>${ref}${tail}</div>`;
 }
 
@@ -1861,7 +1888,7 @@ async function openStock(t){
           </div>
           <div class="stats" style="margin-top:12px">
             <div><span>ปิดก่อนหน้า:</span> <b>${fmt(r.sess_prev ?? r.prev_close)}</b></div>
-            <div><span>วอลุ่ม:</span> <b>${fmt(r.vol_ratio)}x</b></div>
+            <div title="${volTip(r)}"><span>วอลุ่ม${volMark(r)}:</span> <b>${fmt(r.vol_ratio)}x</b></div>
             <div><span>EMA20:</span> <b>${fmt(r.ema20)}</b></div>
             <div><span>EMA50:</span> <b>${fmt(r.ema50)}</b></div>
           </div>
@@ -2273,7 +2300,7 @@ function card(r){
     <div class="deep${deepOpen?' open':''}" id="deep-${r.ticker}"><div class="deep-in">
       <div class="stats">
         <div><span>ปิดก่อนหน้า:</span> <b>${fmt(r.sess_prev ?? r.prev_close)}</b></div>
-        <div><span>${gl('วอลุ่ม')}:</span> <b>${fmt(r.vol_ratio)}x</b></div>
+        <div title="${volTip(r)}"><span>${gl('วอลุ่ม')}${volMark(r)}:</span> <b>${fmt(r.vol_ratio)}x</b></div>
       </div>
       <div class="rsix">
         <div class="rsix-lbl"><span>${gl('RSI','RSI(14)')} ${rsiTag}</span><b>${fmt(r.rsi,1)}</b></div>
@@ -2608,13 +2635,23 @@ function listRow(r){
   const rev = r.reversal && r.reversal.score >= 3
     ? '<span class="lflag">🔄 กลับตัว</span>' : '';
   const sec = THEME_MAP[r.ticker] || (SECTORS[r.sector] ? SECTORS[r.sector].th : '');
+  // ราคานอกเวลา (พรีมาร์เก็ต/หลังปิด/ข้ามคืน) — บรรทัดเล็กใต้ราคาปิด
+  let ohMini = '';
+  if(pv.oh){
+    const ph = ohPhase(lq, pv.oh);
+    const ou = pv.oh.chg >= 0;
+    // สั้นที่สุดเท่าที่ยังอ่านรู้เรื่อง — ไอคอนบอกช่วงเวลาแทนคำ (มี tooltip กำกับ)
+    ohMini = `<span class="loh" title="${escHtml(ph.labelPlain)} ${fmt(pv.oh.price)}">${ph.icon}<b>${fmt(pv.oh.price)}</b>` +
+      `<span class="${ou?'up':'down'}">${ou?'+':''}${fmt(pv.oh.chg)}%</span></span>`;
+  }
   return `<div class="lrow ${vc}" onclick="openStock('${r.ticker}')"
       title="แตะเพื่อดูข้อมูลทั้งหมดของ ${escHtml(r.ticker)}">
     ${rev}
     <div class="lt"><b>${escHtml(r.ticker)}</b><span class="lsec">${escHtml(sec)}</span></div>
     ${miniSpark(r)}
     <div class="lpx"><b>${fmt(pv.price)}</b>
-      <span class="lchg ${up?'up':'down'}">${up?'+':''}${pv.chg!=null?fmt(pv.chg):'-'}%</span></div>
+      <span class="lchg ${up?'up':'down'}">${up?'+':''}${pv.chg!=null?fmt(pv.chg):'-'}%</span>
+      ${ohMini}</div>
     <span class="lv-badge ${vc}">${verdictThai(r.verdict)}</span>
     <button class="ldel" title="ลบ" onclick="event.stopPropagation();removeTicker('${r.ticker}')">✕</button>
   </div>`;

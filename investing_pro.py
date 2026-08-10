@@ -258,6 +258,207 @@ def _infer_market_state(df):
         return None
 
 
+# ----------------------------------------------------------------------
+# Volume pace — เทียบวอลุ่มระหว่างวันให้เป็นธรรม
+# ----------------------------------------------------------------------
+# เวลาเปิด-ปิดตลาดตาม timezone ของกราฟ (นาทีนับจากเที่ยงคืน) — ใช้เฉพาะทางถอย
+_SESSION_HOURS = {"New_York": (570, 960), "Bangkok": (600, 990)}
+
+_pace_cache = {}   # ticker -> (ts, dict) ผลของ session_pace()
+_PACE_TTL = 300    # วอลุ่มสะสมของวันนี้อยู่ในนี้ด้วย — ต้องสดพอควรระหว่างตลาดเปิด
+
+
+def session_pace(tk, sessions=20):
+    """ภาพวอลุ่มระดับ 5 นาทีของหุ้นตัวนั้น — ทั้ง baseline และของวันนี้ จากแหล่งเดียวกัน
+
+    ตั้งใจให้ตัวเศษกับตัวหารมาจาก feed เดียวกัน เพราะวอลุ่มของแท่งรายวันที่ Yahoo ให้
+    ไม่เท่ากับผลรวมแท่ง 5 นาทีในเซสชันปกติ (วัดจริงได้ราว 0.83-0.96 เท่า — ต่างกันแล้วแต่ตัว
+    เพราะแท่งรายวันรวมพวก auction/off-exchange เข้าไปด้วย) เอามาหารกันข้ามแหล่งจะเพี้ยน 10-20%
+
+    คืน dict:
+      abs   นาทีของวัน -> ค่าเฉลี่ยวอลุ่มสะสม (หุ้นจริง) ของ ~20 เซสชันที่จบแล้ว
+      frac  นาทีของวัน -> ค่าเฉลี่ยสัดส่วนของวอลุ่มทั้งวันที่เดินไปแล้ว (0-1)
+      today วอลุ่มสะสมของวันนี้ถึงแท่งล่าสุด — None ถ้าวันนี้ยังไม่มีแท่ง
+      today_min  เวลาจบของแท่งล่าสุดวันนี้ (นาทีของวัน) — ใช้เป็น "ตอนนี้" แทนนาฬิกาเครื่อง
+                 เพื่อไม่ให้ feed 5 นาทีที่มาช้าถูกเทียบกับ baseline ของเวลาที่ล้ำหน้าไปแล้ว
+    คืน None ถ้าข้อมูลอินทราเดย์ไม่พอ — ผู้เรียกจะถอยไปใช้สัดส่วนเวลาที่ผ่านไปแทน
+    """
+    sym = getattr(tk, "ticker", "")
+    now = time.time()
+    c = _pace_cache.get(sym)
+    if c and now - c[0] < _PACE_TTL:
+        return c[1]
+    try:
+        # 1mo = ~21 เซสชัน ซึ่งพอดีกับหน้าต่าง 20 วันของ VOL_AVG20
+        # (Yahoo ให้แท่ง 5 นาทีย้อนหลังได้ไม่เกิน 60 วัน — ขอมากกว่านี้จะโดนปฏิเสธทั้งก้อน)
+        h = tk.history(period="1mo", interval="5m", prepost=False)
+    except Exception:
+        h = None
+    if h is None or h.empty or "Volume" not in h.columns:
+        return None
+    h = h[h["Volume"].notna()]
+    if h.empty:
+        return None
+
+    tz = getattr(h.index, "tz", None)
+    today = (pd.Timestamp.now(tz=tz) if tz is not None else pd.Timestamp.now()).date()
+    per_day = {d: g for d, g in h.groupby(h.index.date)}
+
+    cur = per_day.pop(today, None)
+    # เซสชันวันนี้ยังไม่จบ → ยังไม่รู้วอลุ่มทั้งวัน จึงเป็นได้แค่ตัวเศษ ไม่ใช่ส่วนหนึ่งของ baseline
+    today_vol = float(cur["Volume"].sum()) if cur is not None and len(cur) else None
+    today_min = (cur.index[-1].hour * 60 + cur.index[-1].minute + 5) if today_vol else None
+
+    if len(per_day) < 3:
+        return None
+    # ตัดวันครึ่ง (เช่นก่อนวันหยุดยาว) ทิ้ง — เส้นโค้งคนละรูปกับวันเต็ม
+    counts = sorted(len(g) for g in per_day.values())
+    min_bars = counts[len(counts) // 2] * 0.9
+    days = [g for d, g in sorted(per_day.items()) if len(g) >= min_bars][-sessions:]
+
+    abs_c, frac_c = [], []
+    for g in days:
+        v = g["Volume"].astype(float)
+        total = float(v.sum())
+        if total <= 0:
+            continue
+        mins = [t.hour * 60 + t.minute for t in g.index]
+        cum = v.cumsum()
+        abs_c.append(pd.Series(cum.values, index=mins))
+        frac_c.append(pd.Series((cum / total).values, index=mins))
+    if len(abs_c) < 3:
+        return None
+
+    # ใช้ mean ไม่ใช่ median ทั้งที่ median ทนวันข่าวใหญ่ได้ดีกว่า — เพราะตัวเลขนี้ถูกเรียกว่า
+    # "เทียบค่าเฉลี่ย 20 วัน" ทุกที่ (การ์ด/CLI/AI) และตอนตลาดปิดก็หารด้วย VOL_AVG20 ซึ่งเป็น mean
+    # ถ้าใช้คนละสถิติกัน ตัวเลขจะกระโดดตอน 16:00 (วัดจริง PLTR 2.49 -> 1.68) ทั้งที่ไม่มีอะไรเกิดขึ้น
+    out = {"abs": pd.concat(abs_c, axis=1).mean(axis=1).sort_index().ffill(),
+           "frac": pd.concat(frac_c, axis=1).mean(axis=1).sort_index().ffill().clip(upper=1.0),
+           "today": today_vol, "today_min": today_min}
+    _pace_cache[sym] = (now, out)
+    return out
+
+
+def _curve_at(curve, now_min):
+    """อ่านค่าสะสมจากเส้นโค้ง ณ นาทีที่กำหนด
+
+    ค่าใน index คือเวลา "เริ่ม" แท่ง 5 นาที ส่วนค่าสะสมคือ ณ เวลา "จบ" แท่ง
+    จึงลากเส้นตรงจาก (เวลาเปิด, 0) ผ่านจุดจบของแต่ละแท่ง — ไม่งั้นช่วงเปิดตลาด
+    จะอ่านเกินจริงจนตัวหารเล็กเกินไปและ ratio พุ่ง
+    """
+    if curve is None or len(curve) == 0:
+        return None
+    idx = list(curve.index)
+    xs = [idx[0]] + [m + 5 for m in idx]
+    ys = [0.0] + [float(v) for v in curve.values]
+    if now_min >= xs[-1]:
+        return ys[-1]
+    for i in range(1, len(xs)):
+        if now_min <= xs[i]:
+            span = xs[i] - xs[i - 1]
+            w = (now_min - xs[i - 1]) / span if span else 1.0
+            return ys[i - 1] + (ys[i] - ys[i - 1]) * w
+    return ys[-1]
+
+
+def _elapsed_fraction(sym, tz, now_min):
+    """ทางถอย: สัดส่วน "เวลา" ที่ผ่านไปของเซสชัน ใช้แทนสัดส่วนวอลุ่ม
+
+    หยาบกว่าเส้นโค้งจริงเพราะวอลุ่มไม่ได้เดินเป็นเส้นตรง (หนาตอนเปิดกับตอนปิด
+    บางกลางวัน) → กลางวันจะประเมินสูงไปนิด ทำให้ ratio อ่านต่ำกว่าความจริงเล็กน้อย
+    และไม่ได้หักพักเที่ยงของตลาดไทย — แต่ยังดีกว่าเทียบกับทั้งวันหลายเท่า
+
+    ใช้ได้เฉพาะของที่เทรดเป็นรอบเวลาทำการจริงๆ: ฟิวเจอร์ส (=F) ค่าเงิน (=X)
+    คริปโต (-USD) และดัชนี (^) เทรดเกือบ 24 ชม. เอาตาราง 9:30-16:00 ไปทาบแล้วเพี้ยนหนัก
+    → คืน None ให้ผู้เรียกไปใช้เซสชันที่จบแล้วแทน ซึ่งถูกเสมอแม้จะช้าไปหนึ่งวัน
+    """
+    s = str(sym).upper()
+    if "=" in s or s.startswith("^") or s.endswith("-USD"):
+        return None
+    span = next((v for k, v in _SESSION_HOURS.items() if k in str(tz)), None)
+    if not span:
+        return None
+    open_m, close_m = span
+    if now_min <= open_m or close_m <= open_m:
+        return None
+    return min((now_min - open_m) / (close_m - open_m), 1.0)
+
+
+def volume_pace(tk, df, market_state):
+    """เทียบวอลุ่มกับค่าเฉลี่ยอย่างเป็นธรรม แม้แท่งของวันนี้จะยังเดินไม่จบ
+
+    ปัญหาที่แก้: ระหว่างตลาดเปิด แท่งรายวันแท่งสุดท้ายคือวอลุ่ม "เท่าที่สะสมมาถึงตอนนี้"
+    แต่ถูกหารด้วยค่าเฉลี่ยของวันที่ครบ 6.5 ชั่วโมง → ค่าที่ได้แตะ 1.0 ไม่ได้เลยก่อนตลาดปิด
+    และอ่านต่ำเหมือนกันหมดทุกตัวตลอดเช้า (ราว 11:05 ET วันปกติเดินไปแค่ ~48% ของวัน
+    ตัวเลขจึงออกมาราว 0.48 ทั้งกระดาน) จนสรุปผิดว่า "ทั้งตลาดวอลุ่มเบา"
+
+    ทางแก้: หารด้วย baseline ณ เวลาเดียวกันของหุ้นตัวนั้นเอง แล้วบอกใน response ให้ชัด
+    ว่าตัวเลขที่ให้มาเทียบเวลาแล้วหรือยัง (clock_matched) และเป็นของเซสชันไหน (asof)
+
+    คืน dict:
+      ratio          ตัวเลขที่ควรใช้แสดง/ให้คะแนน
+      basis          clock_matched | elapsed_fraction | last_complete_session | full_session
+      clock_matched  True เมื่อตัวเศษกับตัวหารครอบคลุมช่วงเวลาเท่ากัน
+      session_pct    สัดส่วนของเซสชันที่เดินไปแล้ว (0-1) — None ถ้าไม่รู้
+      raw_ratio      ตัวเลขแบบเดิมที่ยังไม่ปรับเวลา (ไว้ให้เทียบ/ดีบัก)
+      asof           วันที่ของเซสชันที่ ratio นี้พูดถึง
+    """
+    last = df.iloc[-1]
+    vol_now = float(last["Volume"])
+    avg_all = float(last["VOL_AVG20"]) if last["VOL_AVG20"] == last["VOL_AVG20"] else 0.0
+
+    tz = getattr(df.index, "tz", None)
+    now_ts = pd.Timestamp.now(tz=tz) if tz is not None else pd.Timestamp.now()
+    partial = market_state == "REGULAR" and df.index[-1].date() == now_ts.date()
+
+    if not partial:
+        ratio = vol_now / avg_all if avg_all else 1.0
+        return {"ratio": ratio, "raw_ratio": ratio, "basis": "full_session",
+                "clock_matched": True, "session_pct": 1.0,
+                "asof": str(df.index[-1].date()),
+                "scope": "ของค่าเฉลี่ย 20 วัน",
+                "label": "เทียบค่าเฉลี่ย 20 วัน (เซสชันเต็มวัน)"}
+
+    # ค่าเฉลี่ยต้องเป็น 20 วันที่ "จบแล้ว" เท่านั้น — VOL_AVG20 ปกติรวมแท่งวันนี้ที่ยัง
+    # เดินไม่จบเข้าไปด้วย ซึ่งกดตัวหารให้ต่ำลงอีกชั้นหนึ่ง (คนละทางกับ bias หลัก)
+    avg20 = float(df["Volume"].iloc[-21:-1].mean()) if len(df) >= 21 else avg_all
+    raw = vol_now / avg20 if avg20 else 1.0
+    today_date = str(df.index[-1].date())
+    asof = {"asof": today_date, "raw_ratio": raw}
+
+    # ทางหลัก: เทียบวอลุ่มสะสมของวันนี้กับ median ของ ~20 เซสชันที่จบแล้ว ณ นาฬิกาเดียวกัน
+    # ทั้งสองฝั่งมาจากแท่ง 5 นาทีชุดเดียวกัน จึงไม่มีปัญหาสเกลข้ามแหล่งข้อมูล
+    p = session_pace(tk)
+    if p and p["today"] and p["today_min"]:
+        base = _curve_at(p["abs"], p["today_min"])
+        if base and base > 0:
+            frac = _curve_at(p["frac"], p["today_min"]) or 0.0
+            pct = round(min(max(frac, 0.0), 1.0) * 100)
+            return {**asof, "ratio": p["today"] / base, "basis": "clock_matched",
+                    "clock_matched": True, "session_pct": frac,
+                    "scope": "ของวอลุ่มปกติ ณ เวลานี้ของวัน",
+                    "label": f"เทียบ ณ เวลาเดียวกันของวัน (วันนี้เดินมา {pct}% ของเซสชัน)"}
+
+    # ทางถอย 1: ไม่มีอินทราเดย์ → ปรับแท่งวันนี้ด้วยสัดส่วน "เวลา" ที่ผ่านไป
+    frac = _elapsed_fraction(getattr(tk, "ticker", ""), tz, now_ts.hour * 60 + now_ts.minute)
+    if frac and frac > 0:
+        frac = min(max(frac, 0.02), 1.0)
+        return {**asof, "ratio": raw / frac, "basis": "elapsed_fraction",
+                "clock_matched": True, "session_pct": frac,
+                "scope": "ของวอลุ่มปกติ ณ เวลานี้ของวัน (ประมาณ)",
+                "label": (f"เทียบ ณ เวลาเดียวกันของวัน — ประมาณจากเวลาที่ผ่านไป "
+                          f"{round(frac * 100)}% ของเซสชัน")}
+
+    # ทางถอย 2: ไม่รู้ว่าวันนี้เดินไปเท่าไหร่ → ไม่เดา ใช้เซสชันที่จบแล้วและบอกให้ชัด
+    prev_avg = float(df["Volume"].iloc[-22:-2].mean()) if len(df) >= 22 else avg20
+    prev_vol = float(df["Volume"].iloc[-2])
+    return {**asof, "ratio": (prev_vol / prev_avg if prev_avg else 1.0),
+            "basis": "last_complete_session", "clock_matched": False,
+            "session_pct": None, "asof": str(df.index[-2].date()),
+            "scope": "ของค่าเฉลี่ย 20 วัน (เซสชันก่อนหน้า)",
+            "label": "เซสชันก่อนหน้าที่จบแล้ว — วอลุ่มวันนี้ยังเทียบไม่ได้"}
+
+
 def support_resistance(df, lookback=60, window=5):
     """หาแนวรับ/แนวต้านจาก swing highs/lows ล่าสุด"""
     recent = df.tail(lookback)
@@ -497,7 +698,7 @@ def live_quotes(tickers):
     return [_quote_cache[t][1] for t in tickers if t in _quote_cache]
 
 
-def detect_reversal(df):
+def detect_reversal(df, vol_ratio=None):
     """สัญญาณกลับตัวหลังลงติดต่อกันหลายวัน (bottom reversal)
 
     ขั้นแรกต้องมี "การลงจริง" ก่อน: ลงอย่างน้อย 4 ใน 6 แท่งก่อนหน้า
@@ -554,9 +755,14 @@ def detect_reversal(df):
         sigs.append("MACD histogram ยกตัว 2 วันติด — โมเมนตัมฝั่งลบอ่อนแรงลง")
 
     # 6) วอลุ่มเข้าแท่งเขียว — การเด้งต้องมีแรงซื้อจริงถึงน่าเชื่อ
-    vol_avg = float(last["VOL_AVG20"]) if last["VOL_AVG20"] == last["VOL_AVG20"] else 0.0
-    if c > o and vol_avg > 0 and float(last["Volume"]) >= 1.5 * vol_avg:
-        sigs.append(f"วอลุ่มเข้าแท่งเขียว {float(last['Volume'])/vol_avg:.1f} เท่าของค่าเฉลี่ย — มีแรงซื้อจริง")
+    #    ใช้ ratio ที่ปรับเวลาแล้วจาก volume_pace ถ้าผู้เรียกส่งมาให้ ไม่งั้นแท่งที่ยัง
+    #    เดินไม่จบจะเทียบกับค่าเฉลี่ยทั้งวันแล้วไม่มีวันถึง 1.5 เท่าก่อนตลาดปิด
+    vr = vol_ratio
+    if vr is None:
+        vol_avg = float(last["VOL_AVG20"]) if last["VOL_AVG20"] == last["VOL_AVG20"] else 0.0
+        vr = float(last["Volume"]) / vol_avg if vol_avg > 0 else 0.0
+    if c > o and vr >= 1.5:
+        sigs.append(f"วอลุ่มเข้าแท่งเขียว {vr:.1f} เท่าของปกติ — มีแรงซื้อจริง")
 
     # 7) ปิดเหนือ high เมื่อวาน — ความแข็งแรงวันแรกหลังลงต่อเนื่อง
     if c > float(prev["High"]):
@@ -589,6 +795,12 @@ def analyze(ticker, cfg):
     last, prev = df.iloc[-1], df.iloc[-2]
     price = float(last["Close"])
     support, resistance = support_resistance(df)
+
+    # ต้องรู้สถานะตลาดก่อนคิดวอลุ่ม — ระหว่างตลาดเปิด แท่งสุดท้ายยังเดินไม่จบ
+    fund = fundamentals(tk, price)
+    market_state = fund.get("market_state") or _infer_market_state(df)
+    vol = volume_pace(tk, df, market_state)
+    vol_ratio = vol["ratio"]
 
     signals = []   # (name, direction, weight, description)
     score = 0
@@ -653,12 +865,11 @@ def analyze(ticker, cfg):
     if price >= last["BB_UP"]:
         add("Touch Upper BB", "bear", 1, "ราคาแตะขอบบน Bollinger — ตึงตัวระยะสั้น")
 
-    # --- Volume ---
-    vol_ratio = float(last["Volume"] / last["VOL_AVG20"]) if last["VOL_AVG20"] else 1.0
+    # --- Volume (เทียบ ณ เวลาเดียวกันของวัน — ดูเหตุผลใน volume_pace) ---
     if vol_ratio >= s["volume_spike_factor"]:
         direction = "bull" if last["Close"] >= last["Open"] else "bear"
         add("Volume Spike", direction, 2,
-            f"วอลุ่ม {vol_ratio:.1f} เท่าของค่าเฉลี่ย 20 วัน (แท่ง{'เขียว' if direction=='bull' else 'แดง'})")
+            f"วอลุ่ม {vol_ratio:.1f} เท่า{vol['scope']} (แท่ง{'เขียว' if direction=='bull' else 'แดง'})")
         events.append("vol_spike_" + direction)
 
     # --- Volume Profile Fusion: ตำแหน่งราคาเทียบโซนวอลุ่ม ---
@@ -682,7 +893,9 @@ def analyze(ticker, cfg):
     prediction = predict_5d(df, price)
 
     # --- สัญญาณกลับตัวหลังลงหลายวัน ---
-    reversal = detect_reversal(df)
+    # ส่ง ratio ที่ปรับเวลาแล้วเข้าไปด้วย — ไม่งั้นข้อ "วอลุ่มเข้าแท่งเขียว" แทบไม่มีวัน
+    # เข้าเงื่อนไขระหว่างตลาดเปิด (ยกเว้นตอนที่ ratio พูดถึงคนละเซสชันกับแท่งที่กำลังดู)
+    reversal = detect_reversal(df, vol_ratio if vol["basis"] != "last_complete_session" else None)
     if reversal and reversal["score"] >= 3:
         add("Reversal Setup", "bull", 2,
             f"🔄 {reversal['label']} — ลงมา {reversal['down_days']}/6 วัน "
@@ -717,7 +930,6 @@ def analyze(ticker, cfg):
     except Exception:
         pass
 
-    fund = fundamentals(tk, price)
     result = {
         **fund,
         "ticker": ticker,
@@ -737,6 +949,14 @@ def analyze(ticker, cfg):
         "stop_suggest": price - 2 * atr_now,
         "target_suggest": price + 3 * atr_now,
         "vol_ratio": vol_ratio,
+        # บอกให้ชัดว่า vol_ratio เทียบกับอะไร — ระหว่างตลาดเปิดเป็นการเทียบ "ณ เวลาเดียวกัน"
+        # ไม่ใช่เทียบกับทั้งวัน ผู้ใช้ปลายทางจะได้ไม่อ่านผิดว่าวอลุ่มเบา
+        "vol_ratio_basis": vol["basis"],
+        "vol_ratio_clock_matched": vol["clock_matched"],
+        "vol_ratio_label": vol["label"],
+        "vol_ratio_raw": vol["raw_ratio"],
+        "vol_session_pct": vol["session_pct"],
+        "vol_asof": vol["asof"],
         "score": score,
         "confidence": confidence,
         "verdict": verdict,
@@ -759,7 +979,7 @@ def analyze(ticker, cfg):
         result["w52h"] = float(df["High"].tail(252).max())
         result["w52l"] = float(df["Low"].tail(252).min())
     if result["market_state"] is None:
-        result["market_state"] = _infer_market_state(df)
+        result["market_state"] = market_state
 
     # ป้ายความสอดคล้องของสัญญาณ (ภาษาคน แทนตัวเลข % ที่ชวนเข้าใจผิดว่าคือโอกาสถูก)
     if confidence >= 70:
@@ -933,6 +1153,8 @@ def print_report(r):
     res = f"{r['resistance']:,.2f}" if r["resistance"] else "-"
     print(f"  แนวรับ/แนวต้าน: {sup} / {res}")
     print(f"  วอลุ่มเทียบเฉลี่ย: {r['vol_ratio']:.2f}x   ATR: {r['atr']:,.2f}")
+    if r.get("vol_ratio_label"):
+        print(f"                  ({r['vol_ratio_label']})")
     print(f"  จุดตัดขาดทุนแนะนำ (2xATR): {r['stop_suggest']:,.2f}")
     print(f"  เป้าหมายแนะนำ (3xATR)   : {r['target_suggest']:,.2f}")
     vp = r.get("vp")

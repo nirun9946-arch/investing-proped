@@ -133,7 +133,10 @@ def _compact_payload(r, smart=None, insider=None, news_items=None, earnings=None
         "ATR": r.get("atr"),
         "จุดตัดขาดทุนแนะนำ": r.get("stop_suggest"),
         "เป้าหมายแนะนำ": r.get("target_suggest"),
-        "วอลุ่มเทียบเฉลี่ย20วัน": r.get("vol_ratio"),
+        # ระหว่างตลาดเปิดตัวเลขนี้เทียบ "ณ เวลาเดียวกันของวัน" แล้ว ไม่ใช่เทียบทั้งวัน
+        # — ต้องบอก AI ด้วย ไม่งั้นจะตีความว่าวอลุ่มเบาทั้งที่จริงเดินเร็วกว่าปกติ
+        "วอลุ่มเทียบปกติ": r.get("vol_ratio"),
+        "วอลุ่มเทียบแบบไหน": r.get("vol_ratio_label"),
         "คะแนนเทคนิครวม": r.get("score"),
         "บทสรุประบบ": r.get("verdict"),
         "สัญญาณเทคนิค": [s.get("desc") for s in (r.get("signals") or [])],

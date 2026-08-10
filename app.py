@@ -321,7 +321,9 @@ def api_market_ta(symbol):
         keys = ["ticker", "price", "change_pct", "rsi", "ema20", "ema50", "ema200",
                 "support", "resistance", "atr", "score", "confidence", "confidence_label",
                 "verdict", "signals", "spark", "reversal", "prev_close",
-                "w52h", "w52l", "vol_ratio", "stop_suggest", "target_suggest"]
+                "w52h", "w52l", "vol_ratio", "vol_ratio_basis", "vol_ratio_clock_matched",
+                "vol_ratio_label", "vol_ratio_raw", "vol_session_pct", "vol_asof",
+                "stop_suggest", "target_suggest"]
         out = {k: r.get(k) for k in keys}
         out.update({"ok": True, "name": name, "icon": icon, "unit": unit})
         return jsonify(out)
