@@ -55,7 +55,21 @@ def options_flow(ticker, force=False):
     except Exception:
         exps = []
     if not exps:
-        return {"ok": False, "error": f"{ticker} ไม่มีตลาดออปชัน (หรือ Yahoo ไม่ให้ข้อมูล)"}
+        # แยกให้ชัดว่า "หุ้นไม่มีออปชันจริง" กับ "แหล่งข้อมูลไม่ยอมให้"
+        # Yahoo บล็อก endpoint ออปชันจาก IP ดาต้าเซ็นเตอร์ (เช่นเว็บบน Render)
+        # แต่ยังให้ราคา/กราฟตามปกติ — ถ้าราคาดึงได้แสดงว่าโดนบล็อกเฉพาะออปชัน
+        price_ok = False
+        try:
+            h = tk.history(period="5d", interval="1d")
+            price_ok = h is not None and not h.empty
+        except Exception:
+            pass
+        if price_ok:
+            return {"ok": False, "blocked": True,
+                    "error": ("แหล่งข้อมูลไม่ส่งข้อมูลออปชันมาให้เซิร์ฟเวอร์นี้ "
+                              "(Yahoo ปิดกั้นการดึง option chain จากไอพีของดาต้าเซ็นเตอร์) — "
+                              "ส่วนนี้จะใช้ได้เมื่อรันโปรแกรมในเครื่องตัวเอง")}
+        return {"ok": False, "error": f"{ticker} ไม่มีตลาดออปชัน หรือดึงข้อมูลไม่สำเร็จ"}
 
     try:
         spot = _num(tk.fast_info.get("lastPrice")) or _num(tk.fast_info.get("last_price"))

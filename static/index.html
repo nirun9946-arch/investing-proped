@@ -1562,7 +1562,12 @@ async function loadFlow(t){
         ${o.limits_note?`<div class="flw-lim">⚠️ ${escHtml(o.limits_note)}</div>`:''}
       </div>`;
   } else if(o.error){
-    optHtml = `<div class="flw"><div class="flw-note ok">${escHtml(o.error)}</div></div>`;
+    // แยกกรณี "แหล่งข้อมูลบล็อก" ออกจากข้อผิดพลาดทั่วไป เพื่อไม่ให้เข้าใจผิดว่าหุ้นไม่มีออปชัน
+    optHtml = `<div class="flw">
+      <div class="flw-note ${o.blocked?'warn':'ok'}">${o.blocked?'🔒 ':''}${escHtml(o.error)}</div>
+      ${o.blocked?`<div class="flw-lim">💡 เปิดโปรแกรมในเครื่องตัวเอง (D:\\For claude\\investing-pro\\เปิดโปรแกรม.bat)
+        แล้วเข้า 127.0.0.1:8750 จะเห็นข้อมูลออปชันครบ — ส่วนอื่นของหน้านี้ใช้ได้ตามปกติทั้งบนเว็บ</div>`:''}
+    </div>`;
   }
 
   const accHtml = acc ? `
