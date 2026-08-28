@@ -17,11 +17,13 @@ if (Test-Server) {
     exit
 }
 
-# เก็บกวาด python ที่ค้างจากรอบก่อน (เครื่องแรมน้อย ตัวค้างจะกินแรมเปล่าและบล็อกพอร์ต)
-$stuck = Get-Process python -ErrorAction SilentlyContinue
+# เก็บกวาดเฉพาะ "แอปนี้" ที่ค้างจากรอบก่อน — ห้ามฆ่า python ตัวอื่นของผู้ใช้
+# (เคยพลาดไปดับ http.server / สคริปต์งานอื่นที่รันคู่กันอยู่)
+$stuck = Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+         Where-Object { $_.CommandLine -match 'app\.py' }
 if ($stuck) {
-    Write-Host ("พบโปรแกรมค้างอยู่ " + @($stuck).Count + " ตัว — กำลังปิด...") -ForegroundColor Yellow
-    $stuck | Stop-Process -Force -ErrorAction SilentlyContinue
+    Write-Host ("พบ Investing Pro ค้างอยู่ " + @($stuck).Count + " ตัว — กำลังปิดเฉพาะตัวนี้...") -ForegroundColor Yellow
+    $stuck | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     Start-Sleep -Seconds 3
 }
 
