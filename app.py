@@ -23,6 +23,7 @@ import ai as ai_mod
 import fundamentals as fund_mod
 import investing_pro as core
 import news as news_mod
+import smartflow as flow_mod
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, static_folder=os.path.join(BASE_DIR, "static"))
@@ -384,6 +385,24 @@ def _ai_quota_check():
             for k in [k for k, v in _ai_hits.items() if not v or now - v[-1] > 3600]:
                 _ai_hits.pop(k, None)
     return None
+
+
+@app.route("/api/flow/<ticker>")
+def api_flow(ticker):
+    """รอยเท้าเงินใหญ่: แรงซื้อขายฝั่งออปชัน (เงินจริง) + สแกนการสะสมในกรอบราคาแคบ"""
+    ticker = ticker.strip().upper()
+    force = request.args.get("refresh") == "1"
+    out = {"ok": True, "ticker": ticker}
+    try:
+        out["options"] = flow_mod.options_flow(ticker, force=force)
+    except Exception as e:
+        out["options"] = {"ok": False, "error": f"อ่านออปชันไม่สำเร็จ: {str(e)[:100]}"}
+    try:
+        _, df = core.fetch(ticker)
+        out["accumulation"] = flow_mod.accumulation_scan(df, float(df["Close"].iloc[-1]))
+    except Exception:
+        out["accumulation"] = None
+    return jsonify(out)
 
 
 @app.route("/api/earnings/<ticker>")

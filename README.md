@@ -24,7 +24,7 @@ Dashboard มี 2 หน้า สลับด้วยแท็บด้าน
 เปิด PowerShell แล้วรัน:
 
 ```powershell
-cd "C:\Users\USER\Desktop\For claude\investing-pro"
+cd "D:\For claude\investing-pro"
 
 # สแกนหุ้นทั้ง watchlist 1 รอบ + แจ้งเตือน
 python investing_pro.py

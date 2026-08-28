@@ -364,6 +364,36 @@
   .ern-q.beat .qs{color:var(--green)} .ern-q.miss .qs{color:var(--red)}
   .ern-next{margin-top:10px;font-size:.79rem;color:var(--muted)}
   .ern-next b{color:var(--purple-hi)}
+  /* ===== รอยเท้าเงินใหญ่: ออปชัน + การสะสม ===== */
+  .flw{padding:14px;border-radius:var(--r-block);background:var(--card2);border:1px solid var(--border)}
+  .flw-bar{display:flex;height:26px;border-radius:8px;overflow:hidden;font-size:.72rem;
+    font-weight:800;margin:8px 0}
+  .flw-bar div{display:flex;align-items:center;justify-content:center;color:#0b1220;
+    white-space:nowrap;overflow:hidden;transition:flex-grow .5s var(--ease-spring)}
+  .flw-c{background:linear-gradient(90deg,#34d399,#6ee7b7)}
+  .flw-p{background:linear-gradient(90deg,#f87171,#fca5a5)}
+  .flw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:10px}
+  .flw-c2{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:9px 11px}
+  .flw-c2 span{display:block;font-size:.7rem;color:var(--muted);font-weight:600}
+  .flw-c2 b{font-size:1rem;font-variant-numeric:tabular-nums}
+  .flw-note{font-size:.82rem;line-height:1.6;margin-top:8px}
+  .flw-note.good{color:var(--green)} .flw-note.warn{color:var(--yellow)}
+  .flw-note.ok{color:var(--blue)} .flw-note.bad{color:var(--red)}
+  .flw-sk{margin-top:12px;display:flex;flex-direction:column;gap:5px}
+  .flw-row{display:flex;align-items:center;gap:8px;font-size:.79rem;
+    background:var(--card);border:1px solid var(--border);border-radius:9px;padding:6px 10px}
+  .flw-row .fs{font-weight:800;font-variant-numeric:tabular-nums;min-width:64px}
+  .flw-row .fv{color:var(--muted);flex:1;font-variant-numeric:tabular-nums}
+  .flw-row .fp{font-weight:800;font-variant-numeric:tabular-nums}
+  .flw-row.call{border-left:3px solid var(--green)}
+  .flw-row.put{border-left:3px solid var(--red)}
+  .flw-row.mixed{border-left:3px solid var(--muted)}
+  .flw-lim{font-size:.74rem;color:var(--muted);line-height:1.55;margin-top:12px;
+    padding-top:10px;border-top:1px dashed var(--border);opacity:.9}
+  .acc-box{margin-top:12px;padding:12px;border-radius:var(--r-block);
+    background:var(--green-bg);border:1px solid rgba(52,211,153,.4)}
+  .acc-h{font-weight:800;color:var(--green);font-size:.88rem}
+  .acc-s{font-size:.8rem;color:var(--muted);line-height:1.5;margin-top:4px}
   /* ===== เครื่องคำนวณทุนเฉลี่ยใหม่ (ถัวเฉลี่ย) ===== */
   .avgc{padding:12px 14px;border-radius:var(--r-block);background:var(--card2);
     border:1px solid var(--border);font-size:.85rem}
@@ -1478,6 +1508,81 @@ function ohLineHtml(r, lq){
     `<span class="${pu?'up':'down'}">${pu?'+':''}${fmt(o.chg)}%</span>${ref}${tail}</div>`;
 }
 
+// ===== รอยเท้าเงินใหญ่: เงินจริงฝั่งออปชัน + การสะสมในกรอบราคาแคบ =====
+function fmtMoney(v){
+  if(v == null) return '—';
+  const a = Math.abs(v), s = v < 0 ? '-' : '';
+  if(a >= 1e9) return s + '$' + (a/1e9).toFixed(2) + 'B';
+  if(a >= 1e6) return s + '$' + (a/1e6).toFixed(1) + 'M';
+  if(a >= 1e3) return s + '$' + (a/1e3).toFixed(0) + 'K';
+  return s + '$' + a.toFixed(0);
+}
+
+async function loadFlow(t){
+  const el = document.getElementById('fdFlow-' + t);
+  if(!el) return;
+  let j;
+  try{
+    j = await (await fetchWithTimeout('/api/flow/'+encodeURIComponent(t), 120000)).json();
+  }catch(e){ if(el.isConnected) el.innerHTML = ''; return; }
+  if(!el.isConnected) return;
+
+  const o = j.options || {};
+  const acc = j.accumulation;
+  if(!o.ok && !acc){ el.innerHTML = ''; return; }
+
+  let optHtml = '';
+  if(o.ok){
+    const cs = o.call_share ?? 50;
+    const im = o.implied_move;
+    const rows = (o.top_strikes||[]).map(s=>`
+      <div class="flw-row ${s.side}">
+        <span class="fs">${fmt(s.strike)}</span>
+        <span class="fv">${s.vs_spot>=0?'+':''}${s.vs_spot}% จากราคา · vol ${s.total_vol.toLocaleString()}</span>
+        <span class="fp">${fmtMoney(s.premium)}</span>
+      </div>`).join('');
+    optHtml = `
+      <div class="flw">
+        <div style="font-weight:800;font-size:.88rem">💰 เงินจริงที่วางฝั่งออปชัน (5 วันหมดอายุถัดไป)</div>
+        <div class="flw-bar">
+          <div class="flw-c" style="flex:${Math.max(cs,0.001)}">${cs>=14?'คอล '+fmt(cs,0)+'%':''}</div>
+          <div class="flw-p" style="flex:${Math.max(100-cs,0.001)}">${(100-cs)>=14?'พุต '+fmt(100-cs,0)+'%':''}</div>
+        </div>
+        ${o.prem_label?`<div class="flw-note ${o.prem_tone}">${escHtml(o.prem_label)}</div>`:''}
+        <div class="flw-grid">
+          <div class="flw-c2"><span>เงินฝั่งคอล</span><b class="up">${fmtMoney(o.call_prem)}</b></div>
+          <div class="flw-c2"><span>เงินฝั่งพุต</span><b class="down">${fmtMoney(o.put_prem)}</b></div>
+          <div class="flw-c2"><span>Put/Call (วอลุ่ม)</span><b>${o.pc_ratio ?? '—'}</b></div>
+          ${im?`<div class="flw-c2"><span>ตลาดคาดเหวี่ยงถึง ${escHtml(im.exp)}</span><b>±${im.pct}%</b></div>`:''}
+        </div>
+        ${o.pc_label?`<div class="flw-note ${o.pc_tone}" style="font-size:.79rem">📊 ${escHtml(o.pc_label)}</div>`:''}
+        ${rows?`<div style="font-size:.79rem;color:var(--muted);margin-top:12px;font-weight:600">
+          สไตรก์ที่เงินไหลเข้าหนักสุด (เขียว=ฝั่งคอล แดง=ฝั่งพุต)</div>
+          <div class="flw-sk">${rows}</div>`:''}
+        ${o.limits_note?`<div class="flw-lim">⚠️ ${escHtml(o.limits_note)}</div>`:''}
+      </div>`;
+  } else if(o.error){
+    optHtml = `<div class="flw"><div class="flw-note ok">${escHtml(o.error)}</div></div>`;
+  }
+
+  const accHtml = acc ? `
+    <div class="acc-box">
+      <div class="acc-h">🕵️ ${escHtml(acc.label)} — เข้าเกณฑ์ ${acc.score}/${acc.max} ข้อ</div>
+      ${acc.signals.map(s=>`<div class="acc-s">✓ ${escHtml(s)}</div>`).join('')}
+      <div class="acc-s" style="margin-top:6px">
+        กรอบราคา <b style="color:var(--text)">${fmt(acc.box_low)} – ${fmt(acc.box_high)}</b>
+        · ราคาสุทธิ ${acc.net_move>=0?'+':''}${acc.net_move}%
+        ${acc.buy_pressure!=null?` · วอลุ่มฝั่งซื้อ ${acc.buy_pressure}%`:''}
+      </div>
+      <div class="flw-lim" style="border-top-color:rgba(52,211,153,.3)">ℹ️ ${escHtml(acc.note)}</div>
+    </div>` : '';
+
+  el.innerHTML = `
+    <div class="fd-h">🐋 รอยเท้าเงินใหญ่</div>
+    <div class="fd-hint">อ่านจากเงินจริงในตลาดออปชัน และพฤติกรรมราคา-วอลุ่มที่บ่งบอกการเก็บของ</div>
+    ${optHtml}${accHtml}`;
+}
+
 // ===== สรุปผลประกอบการหลังประกาศ (แปลไทยแล้ว) =====
 async function loadEarnings(t){
   const el = document.getElementById('fdErn-' + t);
@@ -1910,6 +2015,8 @@ async function openStock(t){
       <div class="fd-hint">ใช้หาแนวรับ-แนวต้านจากวอลุ่มจริง ไม่ใช่จากเส้นที่ลากเอง</div>
       ${vpBlockOf(r)}</div>`:''}
 
+    <div class="fd-sec" id="fdFlow-${t}"></div>
+
     <div class="fd-sec" id="fdErn-${t}"></div>
 
     <div class="fd-sec" id="fdSmart-${t}"></div>
@@ -1997,6 +2104,7 @@ async function openStock(t){
 
   calcAvg(t);          // แสดงผลทุนเฉลี่ยจากค่าที่จำไว้ (ถ้ามี)
   loadEarnings(t);     // สรุปผลประกอบการหลังประกาศ
+  loadFlow(t);         // รอยเท้าเงินใหญ่ (ออปชัน + การสะสม)
   loadStockNews(t);    // ข่าวโหลดตามหลัง ไม่หน่วงหน้าจอ
   loadStockSmart(t);   // สัญญาณเงินใหญ่ (สถาบัน/กองทุน/ผู้บริหาร)
 }
