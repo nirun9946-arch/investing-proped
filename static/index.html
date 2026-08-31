@@ -1589,12 +1589,14 @@ async function loadFlow(t){
 }
 
 // ===== สรุปผลประกอบการหลังประกาศ (แปลไทยแล้ว) =====
-async function loadEarnings(t){
+async function loadEarnings(t, force){
   const el = document.getElementById('fdErn-' + t);
   if(!el) return;
+  if(force) el.innerHTML = '<div class="fd-hint">⏳ กำลังดึงผลประกอบการรอบล่าสุด...</div>';
   let j;
   try{
-    j = await (await fetchWithTimeout('/api/earnings/'+encodeURIComponent(t), 90000)).json();
+    j = await (await fetchWithTimeout('/api/earnings/'+encodeURIComponent(t)
+        + (force ? '?refresh=1' : ''), 90000)).json();
   }catch(e){ if(el.isConnected) el.innerHTML = ''; return; }
   if(!el.isConnected) return;
   if(!j.ok){ el.innerHTML = ''; return; }   // ETF/หุ้นที่ไม่มีงบ — ซ่อนหัวข้อไปเลย
@@ -1616,12 +1618,17 @@ async function loadEarnings(t){
   }).join('');
 
   el.innerHTML = `
-    <div class="fd-h">📊 ผลประกอบการไตรมาสล่าสุด</div>
+    <div class="fd-h">📊 ผลประกอบการไตรมาสล่าสุด
+      <button class="sb-btn" style="margin-left:8px;font-size:.72rem;padding:3px 10px"
+        onclick="loadEarnings('${t}', true)" title="ดึงข้อมูลใหม่ (ปกติระบบจำไว้ 6 ชม.)">🔄 อัปเดต</button></div>
     <div class="fd-hint">เทียบกับที่นักวิเคราะห์คาดไว้ — ตัวเลขที่ราคาหุ้นตอบสนองมากที่สุด</div>
     <div class="ern ${L.tone}">
       <div class="ern-top">
         <span class="ern-badge">${escHtml(L.label)}</span>
-        <span class="ern-date">🗓 ประกาศเมื่อ ${escHtml(thDate ? thDate(L.date) : L.date)}</span>
+        <span class="ern-date">🗓 ประกาศเมื่อ ${escHtml(thDate ? thDate(L.date) : L.date)}${
+          j.days_since != null ? ` (${j.days_since} วันก่อน)` : ''}</span>
+        ${j.days_since != null && j.days_since > 100
+          ? `<span class="ern-date" style="color:var(--yellow)">⚠️ ข้อมูลเก่ากว่า 1 ไตรมาส — บริษัทอาจยังไม่ประกาศงบรอบใหม่ หรือแหล่งข้อมูลยังไม่อัปเดต</span>` : ''}
       </div>
       <div class="ern-grid">
         <div class="ern-c"><span>กำไรต่อหุ้น (คาด)</span><b>${fmt(L.est)}</b></div>

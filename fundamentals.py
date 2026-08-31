@@ -339,8 +339,13 @@ def get_earnings(ticker, force=False):
         })
     rows.sort(key=lambda x: x["date"], reverse=True)
 
+    # Yahoo ปนแถวเก่าที่ไม่มีตัวเลข EPS มาด้วย (บางตัวย้อนไปหลายปี)
+    # ถ้าไม่กรองด้วยวันที่ จะไปหยิบ "ประกาศครั้งถัดไป" เป็นวันในอดีต (เจอกับ IREN: ได้ 2024-05-15)
+    from datetime import date as _date, datetime as _dt
+    today_s = str(_date.today())
     reported = [r for r in rows if r["actual"] is not None]
-    upcoming = [r for r in rows if r["actual"] is None]
+    upcoming = [r for r in rows if r["actual"] is None and r["date"] >= today_s]
+    upcoming.sort(key=lambda x: x["date"])          # ใกล้ที่สุดก่อน
     if not reported:
         return {"ok": False, "error": f"ยังไม่มีผลประกอบการที่ประกาศแล้วของ {ticker}"}
 
@@ -431,8 +436,10 @@ def get_earnings(ticker, force=False):
         "history": [{"date": r["date"], "est": r["est"], "actual": r["actual"],
                      "surprise": round(r["surprise"], 2) if r["surprise"] is not None else None}
                     for r in reported[:8]],
-        "next": ({"date": upcoming[-1]["date"], "est": upcoming[-1]["est"]}
+        "next": ({"date": upcoming[0]["date"], "est": upcoming[0]["est"]}
                  if upcoming else None),
+        # บอกอายุข้อมูล เพื่อให้เห็นเองว่า "ยังไม่อัปเดต" หรือ "บริษัทยังไม่ประกาศ"
+        "days_since": (_date.today() - _dt.strptime(last["date"], "%Y-%m-%d").date()).days,
     }
     _earn_cache[ticker] = (now, payload)
     if len(_earn_cache) > 60:
