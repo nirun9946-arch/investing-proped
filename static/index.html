@@ -1582,21 +1582,23 @@ function chipsBlock(cd){
     const dn = bot.map((y, i) => 'L' + X(n - 1 - i).toFixed(1) + ' ' + bot[n - 1 - i].toFixed(1)).join('');
     return up + dn + 'Z';
   };
-  const pTrap = layer('trap', []);
-  const pOld  = layer('old', ['trap']);
-  const pNew  = layer('new', ['trap', 'old']);
+  // เรียงให้ตรงกับความเป็นจริงของราคา: คนติดดอยซื้อไว้ "สูงกว่า" ราคาปัจจุบัน จึงอยู่ชั้นบน
+  // ล่างสุด = เงินเพิ่งเข้า (ต้นทุนใกล้ราคา) → กลาง = เงินถือยาว → บน = ติดดอย
+  const pNew  = layer('new', []);
+  const pOld  = layer('old', ['new']);
+  const pTrap = layer('trap', ['new', 'old']);
   const now = cd.now;
   return `<div class="cd">
     <div style="font-weight:800;font-size:.88rem">🧊 การกระจายต้นทุนผู้ถือ ${n} วัน</div>
     <svg class="cd-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-      <path d="${pTrap}" fill="#34d399" opacity=".8"/>
-      <path d="${pOld}"  fill="#f87171" opacity=".85"/>
       <path d="${pNew}"  fill="#fbbf24" opacity=".85"/>
+      <path d="${pOld}"  fill="#f87171" opacity=".85"/>
+      <path d="${pTrap}" fill="#34d399" opacity=".8"/>
     </svg>
     <div class="cd-legend">
-      <span><i style="background:#34d399"></i>เขียว = ติดดอย (ต้นทุนสูงกว่าราคา)</span>
-      <span><i style="background:#f87171"></i>แดง = เงินถือยาวเกิน 60 วัน (มีกำไร)</span>
-      <span><i style="background:#fbbf24"></i>เหลือง = เงินเพิ่งเข้า (มีกำไร)</span>
+      <span><i style="background:#34d399"></i>เขียว (บน) = ติดดอย — ต้นทุนสูงกว่าราคา</span>
+      <span><i style="background:#f87171"></i>แดง (กลาง) = เงินถือยาวเกิน 60 วัน มีกำไร</span>
+      <span><i style="background:#fbbf24"></i>เหลือง (ล่าง) = เงินเพิ่งเข้า มีกำไร</span>
     </div>
     <div class="cd-now">
       <div class="cd-n"><span>ติดดอยตอนนี้</span><b style="color:#34d399">${fmt(now.trap)}%</b></div>
