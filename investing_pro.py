@@ -460,7 +460,16 @@ def volume_pace(tk, df, market_state):
 
 
 def support_resistance(df, lookback=60, window=5):
-    """หาแนวรับ/แนวต้านจาก swing highs/lows ล่าสุด"""
+    """หาแนวรับ/แนวต้านจาก swing highs/lows ล่าสุด
+
+    คืน (support, resistance, sup_basis, res_basis) — สอง basis บอกว่าระดับนั้นมาจากไหน
+    "swing" = จุดกลับตัวจริงในกรอบ 60 แท่ง · "w52" = ถอยไปใช้จุดสูง/ต่ำสุด 52 สัปดาห์
+    · None = ไม่มีจริง ๆ (ราคาทำจุดสูงสุด/ต่ำสุดของข้อมูลทั้งชุด)
+
+    เดิมคืน None เฉย ๆ เมื่อราคาทำจุดสูงสุดของกรอบ 60 แท่ง ทำให้การ์ดขึ้นว่า
+    "ไม่มีแนวต้าน" ทั้งที่จุดสูงสุด 52 สัปดาห์ยังลอยอยู่เหนือราคา (เคยรายงานผิด
+    ให้ PLTR และ NVDA มาแล้ว) จึงถอยไปใช้กรอบ 52 สัปดาห์ก่อนจะยอมแพ้
+    """
     recent = df.tail(lookback)
     highs, lows = [], []
     h, l = recent["High"], recent["Low"]
@@ -474,15 +483,68 @@ def support_resistance(df, lookback=60, window=5):
     price = float(df["Close"].iloc[-1])
     resistance = min([x for x in highs if x > price], default=None)
     support = max([x for x in lows if x < price], default=None)
-    return support, resistance
+    res_basis = "swing" if resistance is not None else None
+    sup_basis = "swing" if support is not None else None
+
+    if resistance is None:
+        hi = float(df["High"].tail(252).max())
+        if hi > price:
+            resistance, res_basis = hi, "w52"
+    if support is None:
+        lo = float(df["Low"].tail(252).min())
+        if lo < price:
+            support, sup_basis = lo, "w52"
+    return support, resistance, sup_basis, res_basis
 
 
 # ----------------------------------------------------------------------
 # Data
 # ----------------------------------------------------------------------
+def _patch_unsettled_last_bar(tk, df):
+    """เติมราคาปิดของแท่งรายวันล่าสุดที่ Yahoo ยังไม่ settle
+
+    Yahoo คืนแท่งของ "วันที่เทรดจบแล้ว" โดยมี Volume ครบแต่ Close เป็น NaN ได้
+    (เจอ 28 ส.ค. 2569 พร้อมกันทั้ง 15 ตัวใน watchlist และดัชนีหลักทุกตัว)
+    ถ้าปล่อยให้ dropna ทิ้งแท่งนั้น ระบบจะถอยไปใช้ข้อมูลของเซสชันก่อนหน้า
+    "โดยเงียบ ๆ" — asof/RSI/EMA/แนวรับ-แนวต้าน/score กลายเป็นของวันเก่าทั้งชุด
+    โดยหน้าจอไม่มีอะไรบอก ซึ่งเคยทำให้รายงานเช้าพลาดทั้งฉบับมาแล้ว
+
+    จึงกู้แท่งนั้นคืนจากข้อมูลราย 1 นาทีของเซสชันปกติ (prepost=False
+    เพื่อให้ได้ราคาปิดจริงที่ 16:00 ET ไม่ใช่ราคาหลังตลาด)
+    ถ้ากู้ไม่ได้คืน df เดิม — ยอมข้อมูลช้า ดีกว่าข้อมูลมั่ว
+    """
+    try:
+        if df is None or df.empty or "Close" not in df:
+            return df
+        if not pd.isna(df["Close"].iloc[-1]):
+            return df
+        # ต้องมี Volume จริงจึงเชื่อว่าเป็นวันที่เทรดแล้ว ไม่ใช่แถวว่างของวันหยุด
+        vol = df["Volume"].iloc[-1] if "Volume" in df else None
+        if vol is None or pd.isna(vol) or float(vol) <= 0:
+            return df
+        target = df.index[-1].date()
+        m = tk.history(period="5d", interval="1m", prepost=False)
+        if m is None or m.empty:
+            return df
+        m = m[[i.date() == target for i in m.index]].dropna(subset=["Close"])
+        if m.empty:
+            return df
+        df.loc[df.index[-1], ["Open", "High", "Low", "Close"]] = [
+            float(m["Open"].iloc[0]), float(m["High"].max()),
+            float(m["Low"].min()), float(m["Close"].iloc[-1]),
+        ]
+    except Exception:
+        # กู้ไม่สำเร็จก็ปล่อยให้ dropna ทำงานตามเดิม — ไม่ให้ทั้งการ์ดพังเพราะการกู้ล้ม
+        pass
+    return df
+
+
 def fetch(ticker, period="1y", interval="1d"):
     tk = yf.Ticker(ticker)
     df = tk.history(period=period, interval=interval, auto_adjust=True)
+    # กู้แท่งล่าสุดที่ราคาปิดยังไม่ settle "ก่อน" dropna มิฉะนั้นจะเสียเซสชันล่าสุดไปเงียบ ๆ
+    if interval == "1d":
+        df = _patch_unsettled_last_bar(tk, df)
     # Yahoo แถมแถวเปล่า (NaN) มาเป็นครั้งคราว เช่นวันหยุดพิเศษหรือช่วงข้อมูลกำลังอัปเดต
     # ถ้าไม่ตัดทิ้ง จะทำให้การคำนวณที่แปลงเป็นจำนวนเต็ม (Volume Profile) พังทั้งการ์ด
     if df is not None and not df.empty:
@@ -520,6 +582,12 @@ def prev_close(ticker, tk=None):
         # auto_adjust=False = ราคากระดานจริง — ถ้าใช้ราคาปรับปันผล ตัวที่จ่ายปันผลถี่
         # (เช่น covered-call ETF) จะได้ฐาน % ผิดในวัน ex-dividend
         h = tk.history(period="5d", interval="1d", auto_adjust=False)
+        # บั๊ก (เจอ 31 ส.ค. 2569): เส้นทางนี้ไม่ได้กู้แท่งที่ Yahoo ยังไม่ settle เหมือน fetch()
+        # เช้าวันจันทร์ Yahoo ส่งแท่งศุกร์ 28 ส.ค. มาโดย Close = NaN, dropna จึงทิ้งทั้งแท่ง
+        # แล้ว prev_close ถอยไปใช้ราคาปิดวันพฤหัสฯ — ข้ามทั้งเซสชันวันศุกร์ไปเงียบ ๆ
+        # ผลคือ % บนการ์ด/quotes เทียบผิดฐาน (NVDA โชว์ -4.00% ทั้งที่เทียบปิดศุกร์จริงคือ +0.61%)
+        # → เรียกตัวกู้แท่งตัวเดียวกับที่ fetch() ใช้ "ก่อน" dropna
+        h = _patch_unsettled_last_bar(tk, h)
         if h is not None and not h.empty:
             h = h.dropna(subset=["Close"])     # กันแถวเปล่าจาก Yahoo → ไม่งั้นได้ NaN
         if h is None or h.empty:
@@ -794,7 +862,7 @@ def analyze(ticker, cfg):
 
     last, prev = df.iloc[-1], df.iloc[-2]
     price = float(last["Close"])
-    support, resistance = support_resistance(df)
+    support, resistance, sup_basis, res_basis = support_resistance(df)
 
     # ต้องรู้สถานะตลาดก่อนคิดวอลุ่ม — ระหว่างตลาดเปิด แท่งสุดท้ายยังเดินไม่จบ
     fund = fundamentals(tk, price)
@@ -925,7 +993,15 @@ def analyze(ticker, cfg):
     try:
         raw = tk.history(period="7d", interval="1d", auto_adjust=False)["Close"].dropna()
         raw = raw[raw > 0]
-        if len(raw) >= 2:
+        # จับคู่ด้วย "วันที่" ไม่ใช่ตำแหน่ง: ถ้า Yahoo ยังไม่ settle แท่งล่าสุด (Close = NaN)
+        # dropna จะทิ้งแท่งนั้น ทำให้ iloc[-2] เลื่อนย้อนไปอีกหนึ่งเซสชัน
+        # แล้ว % รายวันผิดทั้งขนาดและบางครั้งผิดเครื่องหมาย
+        # (28 ส.ค. 2569: NVDA รายงาน +3.76% ทั้งที่จริงคือ -4.58%)
+        asof_date = df.index[-1].date()
+        before = raw[[i.date() < asof_date for i in raw.index]]
+        if len(before):
+            sess_prev_val = float(before.iloc[-1])
+        elif len(raw) >= 2:
             sess_prev_val = float(raw.iloc[-2])
     except Exception:
         pass
@@ -945,6 +1021,11 @@ def analyze(ticker, cfg):
         "macd_hist": float(last["MACD_HIST"]),
         "support": support,
         "resistance": resistance,
+        # ระดับนี้มาจากไหน: "swing" = จุดกลับตัวจริงในกรอบ 60 แท่ง
+        # "w52" = ถอยไปใช้กรอบ 52 สัปดาห์เพราะราคาทำจุดสูง/ต่ำสุดของกรอบ 60 แท่งไปแล้ว
+        # None = ไม่มีจริง ๆ — อย่าอ่านว่า "ไม่มีแนวต้าน" โดยไม่ดู basis ก่อน
+        "support_basis": sup_basis,
+        "resistance_basis": res_basis,
         "atr": atr_now,
         "stop_suggest": price - 2 * atr_now,
         "target_suggest": price + 3 * atr_now,
@@ -980,6 +1061,11 @@ def analyze(ticker, cfg):
         result["w52l"] = float(df["Low"].tail(252).min())
     if result["market_state"] is None:
         result["market_state"] = market_state
+
+    # ชื่อพ้องของกรอบ 52 สัปดาห์ — เอกสาร/สคริปต์ภายนอกเรียกด้วยชื่อนี้กันบ่อย
+    # ก่อนหน้านี้ผู้เรียกที่ใช้ชื่อ high_52w จะได้ None แล้วเข้าใจผิดว่าเครื่องมือคำนวณไม่ได้
+    result["high_52w"] = result["w52h"]
+    result["low_52w"] = result["w52l"]
 
     # ป้ายความสอดคล้องของสัญญาณ (ภาษาคน แทนตัวเลข % ที่ชวนเข้าใจผิดว่าคือโอกาสถูก)
     if confidence >= 70:

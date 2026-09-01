@@ -392,6 +392,21 @@
     padding-top:10px;border-top:1px dashed var(--border);opacity:.9}
   .acc-box{margin-top:12px;padding:12px;border-radius:var(--r-block);
     background:var(--green-bg);border:1px solid rgba(52,211,153,.4)}
+  /* กราฟเส้นสีรุ้ง GMMA — รายย่อย vs สถาบัน */
+  .rb{margin-top:12px;padding:14px;border-radius:var(--r-block);
+    background:var(--card2);border:1px solid var(--border)}
+  .rb-chart{width:100%;height:190px;display:block}
+  .rb-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:.75rem;color:var(--muted)}
+  .rb-legend span{display:inline-flex;align-items:center;gap:5px}
+  .rb-legend i{width:16px;height:3px;border-radius:2px;display:inline-block}
+  .rb-verdict{font-weight:800;font-size:.9rem;margin-top:10px}
+  .rb-verdict.good{color:var(--green)} .rb-verdict.ok{color:var(--blue)}
+  .rb-verdict.warn{color:var(--yellow)} .rb-verdict.bad{color:var(--red)}
+  .rb-detail{font-size:.82rem;color:var(--muted);line-height:1.6;margin-top:3px}
+  .rb-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:10px}
+  .rb-s{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 10px}
+  .rb-s span{display:block;font-size:.68rem;color:var(--muted);font-weight:600}
+  .rb-s b{font-size:.95rem;font-variant-numeric:tabular-nums}
   .acc-h{font-weight:800;color:var(--green);font-size:.88rem}
   .acc-s{font-size:.8rem;color:var(--muted);line-height:1.5;margin-top:4px}
   /* ===== เครื่องคำนวณทุนเฉลี่ยใหม่ (ถัวเฉลี่ย) ===== */
@@ -1518,6 +1533,59 @@ function fmtMoney(v){
   return s + '$' + a.toFixed(0);
 }
 
+// กราฟเส้นสีรุ้ง GMMA — เส้นอุ่น = เงินระยะสั้น (รายย่อย) · เส้นเย็น = เงินระยะยาว (สถาบัน)
+function rainbowChart(rb){
+  if(!rb || !rb.short || !rb.long) return '';
+  const W = 560, H = 190, PAD = 6;
+  const all = [];
+  rb.short.forEach(l => all.push(...l.v));
+  rb.long.forEach(l => all.push(...l.v));
+  all.push(...rb.price);
+  const min = Math.min(...all), max = Math.max(...all), span = (max - min) || 1;
+  const n = rb.price.length;
+  const X = i => (i / (n - 1)) * W;
+  const Y = v => H - PAD - ((v - min) / span) * (H - PAD * 2);
+  const path = arr => arr.map((v, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1)).join('');
+
+  // ไล่สีอุ่น (สั้น=รายย่อย) และสีเย็น (ยาว=สถาบัน)
+  const WARM = ['#fca5a5','#fb923c','#fbbf24','#facc15','#fde047','#fef08a'];
+  const COOL = ['#22d3ee','#38bdf8','#60a5fa','#818cf8','#a78bfa','#c084fc'];
+  const shortP = rb.short.map((l,i)=>
+    `<path d="${path(l.v)}" fill="none" stroke="${WARM[i%6]}" stroke-width="1.3" opacity=".95"/>`).join('');
+  const longP = rb.long.map((l,i)=>
+    `<path d="${path(l.v)}" fill="none" stroke="${COOL[i%6]}" stroke-width="1.6" opacity=".95"/>`).join('');
+  const pricePath = `<path d="${path(rb.price)}" fill="none" stroke="rgba(255,255,255,.55)"
+    stroke-width="1" stroke-dasharray="3 3"/>`;
+  return `<svg class="rb-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    ${longP}${shortP}${pricePath}</svg>`;
+}
+
+function rainbowBlock(rb){
+  if(!rb) return '';
+  const w = rb.widening;
+  return `<div class="rb">
+    <div style="font-weight:800;font-size:.88rem">🌈 ใครคุมหุ้นตัวนี้อยู่ — เส้นสีรุ้ง (GMMA)</div>
+    ${rainbowChart(rb)}
+    <div class="rb-legend">
+      <span><i style="background:linear-gradient(90deg,#fca5a5,#fde047)"></i>เส้นอุ่น = เงินระยะสั้น (รายย่อย/เก็งกำไร)</span>
+      <span><i style="background:linear-gradient(90deg,#22d3ee,#c084fc)"></i>เส้นเย็น = เงินระยะยาว (สถาบัน/ถือยาว)</span>
+      <span><i style="background:rgba(255,255,255,.55)"></i>ราคาจริง</span>
+    </div>
+    <div class="rb-verdict ${rb.tone}">${escHtml(rb.who)}</div>
+    <div class="rb-detail">${escHtml(rb.detail)}</div>
+    <div class="rb-stats">
+      <div class="rb-s"><span>ระยะห่างสองกลุ่ม</span>
+        <b class="${rb.spread>=0?'up':'down'}">${rb.spread>=0?'+':''}${rb.spread}%</b></div>
+      <div class="rb-s"><span>เทียบ 20 วันก่อน</span>
+        <b class="${w>=0?'up':'down'}">${w>=0?'ถ่างออก +':'บีบเข้า '}${w}%</b></div>
+      <div class="rb-s"><span>ความกว้างกลุ่มสั้น</span><b>${rb.short_width}%</b></div>
+      <div class="rb-s"><span>ความกว้างกลุ่มยาว</span><b>${rb.long_width}%</b></div>
+    </div>
+    ${rb.inst_note?`<div class="rb-detail" style="margin-top:8px;color:var(--yellow)">🏛 ${escHtml(rb.inst_note)}</div>`:''}
+    <div class="flw-lim">ℹ️ ${escHtml(rb.note)}</div>
+  </div>`;
+}
+
 async function loadFlow(t){
   const el = document.getElementById('fdFlow-' + t);
   if(!el) return;
@@ -1529,7 +1597,7 @@ async function loadFlow(t){
 
   const o = j.options || {};
   const acc = j.accumulation;
-  if(!o.ok && !acc){ el.innerHTML = ''; return; }
+  if(!o.ok && !acc && !j.rainbow){ el.innerHTML = ''; return; }
 
   let optHtml = '';
   if(o.ok){
@@ -1585,7 +1653,7 @@ async function loadFlow(t){
   el.innerHTML = `
     <div class="fd-h">🐋 รอยเท้าเงินใหญ่</div>
     <div class="fd-hint">อ่านจากเงินจริงในตลาดออปชัน และพฤติกรรมราคา-วอลุ่มที่บ่งบอกการเก็บของ</div>
-    ${optHtml}${accHtml}`;
+    ${rainbowBlock(j.rainbow)}${optHtml}${accHtml}`;
 }
 
 // ===== สรุปผลประกอบการหลังประกาศ (แปลไทยแล้ว) =====

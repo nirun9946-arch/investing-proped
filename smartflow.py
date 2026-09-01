@@ -200,6 +200,108 @@ def options_flow(ticker, force=False):
     return payload
 
 
+def rainbow_gmma(df, points=90):
+    """เส้นสีรุ้ง GMMA — แยก 'ผู้เล่นระยะสั้น (รายย่อย)' ออกจาก 'ผู้ถือระยะยาว (สถาบัน)'
+
+    วิธีของ Daryl Guppy: วาด EMA 2 กลุ่มพร้อมกัน
+      • กลุ่มสั้น 3-15 วัน  = พฤติกรรมนักเก็งกำไร/รายย่อย ที่เปลี่ยนใจเร็ว
+      • กลุ่มยาว 30-60 วัน = พฤติกรรมเงินระยะยาว/สถาบัน ที่ขยับช้ากว่า
+    อ่านจากตำแหน่งและระยะห่างของสองกลุ่มว่าตอนนี้ฝั่งไหนคุมตลาดอยู่
+    """
+    import pandas as pd
+    if df is None or len(df) < 80:
+        return None
+    close = df["Close"]
+    SHORT = [3, 5, 8, 10, 12, 15]
+    LONG = [30, 35, 40, 45, 50, 60]
+
+    def _ema(s, n):
+        return s.ewm(span=n, adjust=False).mean()
+
+    series = {}
+    for n in SHORT + LONG:
+        series[n] = _ema(close, n)
+
+    tail = min(points, len(close) - 1)
+    dates = [str(d)[:10] for d in close.index[-tail:]]
+    px = [round(float(v), 4) for v in close.iloc[-tail:]]
+
+    def pack(group):
+        out = []
+        for n in group:
+            vals = series[n].iloc[-tail:]
+            if vals.isna().any():
+                continue
+            out.append({"n": n, "v": [round(float(x), 4) for x in vals]})
+        return out
+
+    short_lines, long_lines = pack(SHORT), pack(LONG)
+    if not short_lines or not long_lines:
+        return None
+
+    # ค่าล่าสุดของแต่ละกลุ่ม → ใครอยู่บน ใครอยู่ล่าง และห่างกันแค่ไหน
+    s_now = [float(series[n].iloc[-1]) for n in SHORT]
+    l_now = [float(series[n].iloc[-1]) for n in LONG]
+    s_avg, l_avg = sum(s_now) / len(s_now), sum(l_now) / len(l_now)
+    last_px = float(close.iloc[-1])
+    spread = (s_avg - l_avg) / l_avg * 100 if l_avg else 0.0
+    s_width = (max(s_now) - min(s_now)) / last_px * 100
+    l_width = (max(l_now) - min(l_now)) / last_px * 100
+
+    # เทียบระยะห่างกับ 20 วันก่อน เพื่อดูว่ากำลังถ่างออกหรือบีบเข้า
+    try:
+        s_prev = sum(float(series[n].iloc[-21]) for n in SHORT) / len(SHORT)
+        l_prev = sum(float(series[n].iloc[-21]) for n in LONG) / len(LONG)
+        spread_prev = (s_prev - l_prev) / l_prev * 100 if l_prev else 0.0
+    except Exception:
+        spread_prev = spread
+    widening = spread - spread_prev
+
+    # ตีความ
+    if spread > 1:
+        if widening > 0.5:
+            who, tone = "รายย่อย/นักเก็งกำไรคุมอยู่ และแรงซื้อกำลังเพิ่ม", "good"
+            detail = "กลุ่มเส้นสั้นอยู่เหนือกลุ่มเส้นยาวและถ่างออก — เงินระยะสั้นไล่ราคา แนวโน้มขาขึ้นยังมีแรง"
+        elif widening < -0.5:
+            who, tone = "รายย่อยยังคุมอยู่ แต่แรงเริ่มแผ่ว", "warn"
+            detail = "เส้นสั้นยังอยู่เหนือเส้นยาว แต่ระยะห่างเริ่มบีบเข้า — แรงซื้อระยะสั้นเริ่มหมด ระวังพักฐาน"
+        else:
+            who, tone = "รายย่อยคุมอยู่ แนวโน้มทรงตัว", "ok"
+            detail = "เส้นสั้นอยู่เหนือเส้นยาวแบบคงที่ — ขาขึ้นเดินต่อแบบไม่เร่ง"
+    elif spread < -1:
+        if widening < -0.5:
+            who, tone = "แรงขายคุมตลาด และกำลังหนักขึ้น", "bad"
+            detail = "เส้นสั้นอยู่ใต้เส้นยาวและถ่างลง — คนระยะสั้นเทของ ยังไม่ควรสวน"
+        else:
+            who, tone = "ยังอยู่ฝั่งขาลง แต่แรงขายเริ่มคลาย", "warn"
+            detail = "เส้นสั้นยังต่ำกว่าเส้นยาว แต่ระยะห่างเริ่มแคบ — อาจเริ่มมีคนรับของ"
+    else:
+        who, tone = "สองฝั่งก้ำกึ่ง — กำลังเปลี่ยนมือ", "ok"
+        detail = "เส้นสั้นกับเส้นยาวพันกัน — ยังไม่มีฝั่งไหนคุมชัด มักเกิดก่อนออกจากกรอบ"
+
+    # กลุ่มยาวบีบตัว = สถาบันลังเล/กำลังทบทวนมุมมอง (สัญญาณเปลี่ยนเทรนด์ได้)
+    inst_note = None
+    if l_width < 1.2:
+        inst_note = ("กลุ่มเส้นยาวบีบตัวแคบมาก — เงินระยะยาวยังไม่ตัดสินใจ "
+                     "จุดนี้มักเป็นจุดเปลี่ยนเทรนด์ ควรรอทิศทางชัดก่อน")
+    elif l_width > 6:
+        inst_note = "กลุ่มเส้นยาวถ่างกว้าง — เงินระยะยาวมีมุมมองชัดเจนและถือยาว"
+
+    return {
+        "dates": dates, "price": px,
+        "short": short_lines, "long": long_lines,
+        "spread": round(spread, 2),
+        "widening": round(widening, 2),
+        "short_width": round(s_width, 2),
+        "long_width": round(l_width, 2),
+        "who": who, "tone": tone, "detail": detail,
+        "inst_note": inst_note,
+        "note": ("อ่านจากพฤติกรรมราคาไม่ใช่ทะเบียนผู้ถือหุ้นจริง — "
+                 "เส้นสั้น = เงินที่เปลี่ยนใจเร็ว (รายย่อย/เก็งกำไร) "
+                 "เส้นยาว = เงินที่ขยับช้า (สถาบัน/ถือยาว)"),
+    }
+
+
 def accumulation_scan(df, price, lookback=60):
     """สแกน 'การสะสมเงียบ' — ราคาแกว่งในกรอบแคบ แต่วอลุ่มหนากว่าปกติ
 

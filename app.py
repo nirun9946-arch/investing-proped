@@ -320,9 +320,13 @@ def api_market_ta(symbol):
         r = core.analyze(symbol, read_config())
         name, icon, unit = _MARKET_META[symbol]
         keys = ["ticker", "price", "change_pct", "rsi", "ema20", "ema50", "ema200",
-                "support", "resistance", "atr", "score", "confidence", "confidence_label",
+                "support", "resistance", "support_basis", "resistance_basis",
+                "atr", "score", "confidence", "confidence_label",
                 "verdict", "signals", "spark", "reversal", "prev_close",
-                "w52h", "w52l", "vol_ratio", "vol_ratio_basis", "vol_ratio_clock_matched",
+                # asof/market_state ต้องส่งออกด้วย ผู้เรียกจะได้ตรวจได้ว่าข้อมูลเป็นของเซสชันไหน
+                "asof", "market_state",
+                "w52h", "w52l", "high_52w", "low_52w",
+                "vol_ratio", "vol_ratio_basis", "vol_ratio_clock_matched",
                 "vol_ratio_label", "vol_ratio_raw", "vol_session_pct", "vol_asof",
                 "stop_suggest", "target_suggest"]
         out = {k: r.get(k) for k in keys}
@@ -400,6 +404,7 @@ def api_flow(ticker):
     try:
         _, df = core.fetch(ticker)
         out["accumulation"] = flow_mod.accumulation_scan(df, float(df["Close"].iloc[-1]))
+        out["rainbow"] = flow_mod.rainbow_gmma(df)
     except Exception:
         out["accumulation"] = None
     return jsonify(out)
