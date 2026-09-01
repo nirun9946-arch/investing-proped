@@ -392,6 +392,22 @@
     padding-top:10px;border-top:1px dashed var(--border);opacity:.9}
   .acc-box{margin-top:12px;padding:12px;border-radius:var(--r-block);
     background:var(--green-bg);border:1px solid rgba(52,211,153,.4)}
+  /* กราฟแท่งเทียน */
+  .ck{margin-top:12px;padding:14px;border-radius:var(--r-block);
+    background:var(--card2);border:1px solid var(--border)}
+  .ck-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+  .ck-head b{font-size:.88rem}
+  .ck-toggle{margin-left:auto;display:flex;gap:6px}
+  .ck-toggle button{font-size:.72rem;font-weight:700;padding:4px 11px;border-radius:16px;
+    background:var(--card);border:1px solid var(--border);color:var(--muted)}
+  .ck-toggle button.on{background:var(--purple-bg);border-color:var(--purple-hi);color:var(--purple-hi)}
+  .ck-chart{width:100%;height:230px;display:block}
+  .ck-vol{width:100%;height:52px;display:block;margin-top:2px}
+  .ck-axis{display:flex;justify-content:space-between;font-size:.68rem;color:var(--muted);margin-top:4px}
+  .ck-info{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:7px;margin-top:9px}
+  .ck-i{background:var(--card);border:1px solid var(--border);border-radius:9px;padding:6px 9px}
+  .ck-i span{display:block;font-size:.66rem;color:var(--muted);font-weight:600}
+  .ck-i b{font-size:.9rem;font-variant-numeric:tabular-nums}
   /* กราฟเส้นสีรุ้ง GMMA — รายย่อย vs สถาบัน */
   .rb{margin-top:12px;padding:14px;border-radius:var(--r-block);
     background:var(--card2);border:1px solid var(--border)}
@@ -1533,6 +1549,99 @@ function fmtMoney(v){
   return s + '$' + a.toFixed(0);
 }
 
+// ===== กราฟแท่งเทียน + วอลุ่ม (ซ้อนเส้นรุ้งได้) =====
+let _ckOverlay = {};      // ticker -> เปิด/ปิดการซ้อนเส้นรุ้ง
+let _flowData = {};       // ticker -> ผลจาก /api/flow (ใช้วาดกราฟใหม่โดยไม่ยิงซ้ำ)
+
+function candleChart(ck, rb, showRainbow){
+  if(!ck || ck.length < 3) return '';
+  const W = 560, H = 230, PAD = 8;
+  const lo = Math.min(...ck.map(c=>c.l)), hi = Math.max(...ck.map(c=>c.h));
+  const span = (hi - lo) || 1;
+  const n = ck.length;
+  const step = W / n;
+  const bw = Math.max(1.6, step * 0.62);
+  const X = i => i * step + step / 2;
+  const Y = v => H - PAD - ((v - lo) / span) * (H - PAD * 2);
+
+  const bars = ck.map((c, i) => {
+    const up = c.c >= c.o;
+    const col = up ? 'var(--green)' : 'var(--red)';
+    const yO = Y(c.o), yC = Y(c.c);
+    const top = Math.min(yO, yC);
+    const hgt = Math.max(1, Math.abs(yC - yO));
+    return `<line x1="${X(i).toFixed(1)}" y1="${Y(c.h).toFixed(1)}"
+        x2="${X(i).toFixed(1)}" y2="${Y(c.l).toFixed(1)}" stroke="${col}" stroke-width="1" opacity=".85"/>
+      <rect x="${(X(i)-bw/2).toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}"
+        height="${hgt.toFixed(1)}" fill="${col}" opacity="${up?'.9':'.95'}" rx="0.5"/>`;
+  }).join('');
+
+  // ซ้อนเส้นรุ้งบนสเกลเดียวกับแท่งเทียน (ตัดให้ยาวเท่ากันก่อน)
+  let overlay = '';
+  if(showRainbow && rb && rb.short && rb.long){
+    const WARM = ['#fca5a5','#fb923c','#fbbf24','#facc15','#fde047','#fef08a'];
+    const COOL = ['#22d3ee','#38bdf8','#60a5fa','#818cf8','#a78bfa','#c084fc'];
+    const draw = (line, col) => {
+      const v = line.v.slice(-n);
+      const off = n - v.length;
+      return `<path d="${v.map((x,i)=>(i?'L':'M')+X(i+off).toFixed(1)+' '+Y(x).toFixed(1)).join('')}"
+        fill="none" stroke="${col}" stroke-width="1.1" opacity=".8"/>`;
+    };
+    overlay = rb.long.map((l,i)=>draw(l, COOL[i%6])).join('')
+            + rb.short.map((l,i)=>draw(l, WARM[i%6])).join('');
+  }
+
+  // วอลุ่มด้านล่าง สีตามแท่งเทียนวันนั้น
+  const vmax = Math.max(...ck.map(c=>c.v)) || 1;
+  const VH = 52;
+  const vols = ck.map((c,i)=>{
+    const h = Math.max(1, c.v / vmax * (VH - 4));
+    const col = c.c >= c.o ? 'var(--green)' : 'var(--red)';
+    return `<rect x="${(X(i)-bw/2).toFixed(1)}" y="${(VH-h).toFixed(1)}" width="${bw.toFixed(1)}"
+      height="${h.toFixed(1)}" fill="${col}" opacity=".45"/>`;
+  }).join('');
+
+  return `<svg class="ck-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      ${bars}${overlay}</svg>
+    <svg class="ck-vol" viewBox="0 0 ${W} ${VH}" preserveAspectRatio="none" aria-hidden="true">${vols}</svg>
+    <div class="ck-axis"><span>${escHtml(ck[0].d)}</span>
+      <span>วอลุ่มด้านล่าง · ${n} วันล่าสุด</span>
+      <span>${escHtml(ck[n-1].d)}</span></div>`;
+}
+
+function candleBlock(t, ck, rb){
+  if(!ck || ck.length < 3) return '';
+  const on = !!_ckOverlay[t];
+  const last = ck[ck.length-1], first = ck[0];
+  const chg = (last.c / first.c - 1) * 100;
+  const hi = Math.max(...ck.map(c=>c.h)), lo = Math.min(...ck.map(c=>c.l));
+  const up = last.c >= last.o;
+  return `<div class="ck" id="ckBox-${t}">
+    <div class="ck-head"><b>📊 กราฟแท่งเทียน ${ck.length} วัน</b>
+      ${rb?`<div class="ck-toggle">
+        <button class="${on?'':'on'}" onclick="setCkOverlay('${t}',false)">แท่งเทียนอย่างเดียว</button>
+        <button class="${on?'on':''}" onclick="setCkOverlay('${t}',true)">+ เส้นรุ้ง</button>
+      </div>`:''}
+    </div>
+    ${candleChart(ck, rb, on)}
+    <div class="ck-info">
+      <div class="ck-i"><span>เปิดวันล่าสุด</span><b>${fmt(last.o)}</b></div>
+      <div class="ck-i"><span>ปิดวันล่าสุด</span><b class="${up?'up':'down'}">${fmt(last.c)}</b></div>
+      <div class="ck-i"><span>สูงสุดในกราฟ</span><b class="down">${fmt(hi)}</b></div>
+      <div class="ck-i"><span>ต่ำสุดในกราฟ</span><b class="up">${fmt(lo)}</b></div>
+      <div class="ck-i"><span>เปลี่ยนแปลงทั้งช่วง</span>
+        <b class="${chg>=0?'up':'down'}">${chg>=0?'+':''}${fmt(chg)}%</b></div>
+    </div>
+  </div>`;
+}
+
+function setCkOverlay(t, on){
+  _ckOverlay[t] = on;
+  const box = document.getElementById('ckBox-' + t);
+  const d = _flowData[t];
+  if(box && d) box.outerHTML = candleBlock(t, d.candles, d.rainbow);
+}
+
 // กราฟเส้นสีรุ้ง GMMA — เส้นอุ่น = เงินระยะสั้น (รายย่อย) · เส้นเย็น = เงินระยะยาว (สถาบัน)
 function rainbowChart(rb){
   if(!rb || !rb.short || !rb.long) return '';
@@ -1595,9 +1704,10 @@ async function loadFlow(t){
   }catch(e){ if(el.isConnected) el.innerHTML = ''; return; }
   if(!el.isConnected) return;
 
+  _flowData[t] = j;                    // เก็บไว้ให้ปุ่มสลับเส้นรุ้งวาดใหม่ได้โดยไม่ต้องยิงซ้ำ
   const o = j.options || {};
   const acc = j.accumulation;
-  if(!o.ok && !acc && !j.rainbow){ el.innerHTML = ''; return; }
+  if(!o.ok && !acc && !j.rainbow && !j.candles){ el.innerHTML = ''; return; }
 
   let optHtml = '';
   if(o.ok){
@@ -1653,7 +1763,7 @@ async function loadFlow(t){
   el.innerHTML = `
     <div class="fd-h">🐋 รอยเท้าเงินใหญ่</div>
     <div class="fd-hint">อ่านจากเงินจริงในตลาดออปชัน และพฤติกรรมราคา-วอลุ่มที่บ่งบอกการเก็บของ</div>
-    ${rainbowBlock(j.rainbow)}${optHtml}${accHtml}`;
+    ${candleBlock(t, j.candles, j.rainbow)}${rainbowBlock(j.rainbow)}${optHtml}${accHtml}`;
 }
 
 // ===== สรุปผลประกอบการหลังประกาศ (แปลไทยแล้ว) =====

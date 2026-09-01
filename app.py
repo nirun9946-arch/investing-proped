@@ -405,6 +405,7 @@ def api_flow(ticker):
         _, df = core.fetch(ticker)
         out["accumulation"] = flow_mod.accumulation_scan(df, float(df["Close"].iloc[-1]))
         out["rainbow"] = flow_mod.rainbow_gmma(df)
+        out["candles"] = flow_mod.candles(df)
     except Exception:
         out["accumulation"] = None
     return jsonify(out)

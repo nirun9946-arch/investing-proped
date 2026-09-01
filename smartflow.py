@@ -200,6 +200,26 @@ def options_flow(ticker, force=False):
     return payload
 
 
+def candles(df, points=90):
+    """ข้อมูลแท่งเทียน + วอลุ่ม สำหรับวาดกราฟ (ใช้ช่วงเวลาเดียวกับเส้นรุ้ง จะได้ซ้อนกันได้)"""
+    if df is None or len(df) < 5:
+        return None
+    tail = min(points, len(df))
+    d = df.tail(tail)
+    out = []
+    for idx, row in d.iterrows():
+        o, h, l, c = (_num(row.get("Open")), _num(row.get("High")),
+                      _num(row.get("Low")), _num(row.get("Close")))
+        if None in (o, h, l, c):
+            continue
+        out.append({
+            "d": str(idx)[:10],
+            "o": round(o, 4), "h": round(h, 4), "l": round(l, 4), "c": round(c, 4),
+            "v": int(_num(row.get("Volume")) or 0),
+        })
+    return out or None
+
+
 def rainbow_gmma(df, points=90):
     """เส้นสีรุ้ง GMMA — แยก 'ผู้เล่นระยะสั้น (รายย่อย)' ออกจาก 'ผู้ถือระยะยาว (สถาบัน)'
 
