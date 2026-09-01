@@ -392,6 +392,21 @@
     padding-top:10px;border-top:1px dashed var(--border);opacity:.9}
   .acc-box{margin-top:12px;padding:12px;border-radius:var(--r-block);
     background:var(--green-bg);border:1px solid rgba(52,211,153,.4)}
+  /* กราฟการกระจายต้นทุนผู้ถือ (chip distribution) */
+  .cd{margin-top:12px;padding:14px;border-radius:var(--r-block);
+    background:var(--card2);border:1px solid var(--border)}
+  .cd-chart{width:100%;height:170px;display:block}
+  .cd-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:.75rem;color:var(--muted)}
+  .cd-legend span{display:inline-flex;align-items:center;gap:5px}
+  .cd-legend i{width:14px;height:10px;border-radius:2px;display:inline-block}
+  .cd-now{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+  .cd-n{border-radius:10px;padding:8px 10px;border:1px solid var(--border);background:var(--card)}
+  .cd-n span{display:block;font-size:.68rem;color:var(--muted);font-weight:600}
+  .cd-n b{font-size:1.05rem;font-variant-numeric:tabular-nums}
+  .cd-v{font-weight:800;font-size:.9rem;margin-top:10px}
+  .cd-v.good{color:var(--green)} .cd-v.ok{color:var(--blue)}
+  .cd-v.warn{color:var(--yellow)} .cd-v.bad{color:var(--red)}
+  .cd-t{font-size:.81rem;color:var(--muted);line-height:1.6;margin-top:3px}
   /* กราฟแท่งเทียน */
   .ck{margin-top:12px;padding:14px;border-radius:var(--r-block);
     background:var(--card2);border:1px solid var(--border)}
@@ -1549,6 +1564,52 @@ function fmtMoney(v){
   return s + '$' + a.toFixed(0);
 }
 
+// ===== การกระจายต้นทุนผู้ถือตามเวลา (chip distribution) =====
+// เขียว = ติดดอย · แดง = เงินถือยาว (มีกำไร) · เหลือง = เงินเพิ่งเข้า (มีกำไร)
+function chipsBlock(cd){
+  if(!cd || !cd.rows || cd.rows.length < 5) return '';
+  const R = cd.rows, n = R.length, W = 560, H = 170;
+  const X = i => (i / (n - 1)) * W;
+  // วาดเป็นพื้นที่ซ้อน 3 ชั้น รวมกัน 100% ทุกวัน
+  const layer = (key, below) => {
+    const top = [], bot = [];
+    R.forEach((r, i) => {
+      const b = below.reduce((s, k) => s + r[k], 0);
+      bot.push(H - (b / 100) * H);
+      top.push(H - ((b + r[key]) / 100) * H);
+    });
+    const up = top.map((y, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + y.toFixed(1)).join('');
+    const dn = bot.map((y, i) => 'L' + X(n - 1 - i).toFixed(1) + ' ' + bot[n - 1 - i].toFixed(1)).join('');
+    return up + dn + 'Z';
+  };
+  const pTrap = layer('trap', []);
+  const pOld  = layer('old', ['trap']);
+  const pNew  = layer('new', ['trap', 'old']);
+  const now = cd.now;
+  return `<div class="cd">
+    <div style="font-weight:800;font-size:.88rem">🧊 การกระจายต้นทุนผู้ถือ ${n} วัน</div>
+    <svg class="cd-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      <path d="${pTrap}" fill="#34d399" opacity=".8"/>
+      <path d="${pOld}"  fill="#f87171" opacity=".85"/>
+      <path d="${pNew}"  fill="#fbbf24" opacity=".85"/>
+    </svg>
+    <div class="cd-legend">
+      <span><i style="background:#34d399"></i>เขียว = ติดดอย (ต้นทุนสูงกว่าราคา)</span>
+      <span><i style="background:#f87171"></i>แดง = เงินถือยาวเกิน 60 วัน (มีกำไร)</span>
+      <span><i style="background:#fbbf24"></i>เหลือง = เงินเพิ่งเข้า (มีกำไร)</span>
+    </div>
+    <div class="cd-now">
+      <div class="cd-n"><span>ติดดอยตอนนี้</span><b style="color:#34d399">${fmt(now.trap)}%</b></div>
+      <div class="cd-n"><span>เงินถือยาว</span><b style="color:#f87171">${fmt(now.old)}%</b></div>
+      <div class="cd-n"><span>เงินเพิ่งเข้า</span><b style="color:#fbbf24">${fmt(now.new)}%</b></div>
+    </div>
+    <div class="cd-v ${cd.tone}">${escHtml(cd.label)}</div>
+    <div class="cd-t">${escHtml(cd.trend)}</div>
+    <div class="cd-t">${escHtml(cd.hold_txt)}</div>
+    <div class="flw-lim">ℹ️ ${escHtml(cd.note)}</div>
+  </div>`;
+}
+
 // ===== กราฟแท่งเทียน + วอลุ่ม (ซ้อนเส้นรุ้งได้) =====
 let _ckOverlay = {};      // ticker -> เปิด/ปิดการซ้อนเส้นรุ้ง
 let _flowData = {};       // ticker -> ผลจาก /api/flow (ใช้วาดกราฟใหม่โดยไม่ยิงซ้ำ)
@@ -1707,7 +1768,7 @@ async function loadFlow(t){
   _flowData[t] = j;                    // เก็บไว้ให้ปุ่มสลับเส้นรุ้งวาดใหม่ได้โดยไม่ต้องยิงซ้ำ
   const o = j.options || {};
   const acc = j.accumulation;
-  if(!o.ok && !acc && !j.rainbow && !j.candles){ el.innerHTML = ''; return; }
+  if(!o.ok && !acc && !j.rainbow && !j.candles && !j.chips){ el.innerHTML = ''; return; }
 
   let optHtml = '';
   if(o.ok){
@@ -1763,7 +1824,7 @@ async function loadFlow(t){
   el.innerHTML = `
     <div class="fd-h">🐋 รอยเท้าเงินใหญ่</div>
     <div class="fd-hint">อ่านจากเงินจริงในตลาดออปชัน และพฤติกรรมราคา-วอลุ่มที่บ่งบอกการเก็บของ</div>
-    ${candleBlock(t, j.candles, j.rainbow)}${rainbowBlock(j.rainbow)}${optHtml}${accHtml}`;
+    ${candleBlock(t, j.candles, j.rainbow)}${chipsBlock(j.chips)}${rainbowBlock(j.rainbow)}${optHtml}${accHtml}`;
 }
 
 // ===== สรุปผลประกอบการหลังประกาศ (แปลไทยแล้ว) =====

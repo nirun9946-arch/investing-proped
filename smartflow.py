@@ -200,6 +200,104 @@ def options_flow(ticker, force=False):
     return payload
 
 
+def chip_distribution(df, points=90, lookback=120):
+    """การกระจายต้นทุนผู้ถือตามเวลา (chip distribution)
+
+    แต่ละวันย้อนดูวอลุ่ม 120 วันก่อนหน้า แล้วแบ่งเป็น 3 กลุ่มตามราคาต้นทุน
+    เทียบราคาปิดวันนั้น:
+      • เขียว = ติดดอย (ต้นทุนสูงกว่าราคา → ยังขาดทุน)
+      • แดง  = ถือมานาน (ซื้อเกิน 60 วันก่อน และมีกำไร) → พร็อกซีของเงินระยะยาว/รายใหญ่
+      • เหลือง = เพิ่งเข้า (ซื้อภายใน 60 วัน และมีกำไร) → พร็อกซีของเงินระยะสั้น/รายย่อย
+
+    หมายเหตุสำคัญ: แบ่ง "รายใหญ่/รายย่อย" จากอายุการถือ ไม่ใช่ขนาดบัญชีจริง
+    เพราะข้อมูลระดับบัญชีไม่เปิดเผยต่อสาธารณะ
+    """
+    if df is None or len(df) < lookback + 10:
+        return None
+    d = df.dropna(subset=["Close", "High", "Low", "Volume"])
+    if len(d) < lookback + 10:
+        return None
+
+    closes = d["Close"].values
+    highs = d["High"].values
+    lows = d["Low"].values
+    vols = d["Volume"].values
+    idx = d.index
+    n = len(d)
+    tail = min(points, n - lookback)
+    if tail < 10:
+        return None
+
+    rows = []
+    for k in range(n - tail, n):
+        px = float(closes[k])
+        lo_i = max(0, k - lookback)
+        trapped = old_gain = new_gain = 0.0
+        for j in range(lo_i, k):
+            v = float(vols[j])
+            if v <= 0:
+                continue
+            # ต้นทุนโดยประมาณของแท่งนั้น = กลางแท่ง (ใช้ typical price)
+            cost = (float(highs[j]) + float(lows[j]) + float(closes[j])) / 3
+            age = k - j
+            if cost > px:
+                trapped += v
+            elif age > 60:
+                old_gain += v
+            else:
+                new_gain += v
+        tot = trapped + old_gain + new_gain
+        if tot <= 0:
+            continue
+        rows.append({
+            "d": str(idx[k])[:10],
+            "px": round(px, 4),
+            "trap": round(trapped / tot * 100, 2),
+            "old": round(old_gain / tot * 100, 2),
+            "new": round(new_gain / tot * 100, 2),
+        })
+
+    if len(rows) < 10:
+        return None
+
+    last = rows[-1]
+    first = rows[0]
+    d_trap = last["trap"] - first["trap"]
+
+    if last["trap"] >= 60:
+        label, tone = "คนส่วนใหญ่ยังติดดอย — แรงขายรอเท่าทุนหนา", "bad"
+    elif last["trap"] >= 35:
+        label, tone = "มีคนติดดอยพอสมควร — ทางขึ้นมีแรงต้าน", "warn"
+    elif last["trap"] >= 15:
+        label, tone = "ติดดอยไม่มาก — ทางขึ้นค่อนข้างโล่ง", "ok"
+    else:
+        label, tone = "แทบไม่มีคนติดดอย — ผู้ถือส่วนใหญ่มีกำไร", "good"
+
+    if d_trap <= -8:
+        trend = f"สัดส่วนติดดอยลดลง {abs(d_trap):.0f} จุดในช่วงที่ดู — คนติดดอยทยอยหลุดพ้นทุน"
+    elif d_trap >= 8:
+        trend = f"สัดส่วนติดดอยเพิ่มขึ้น {d_trap:.0f} จุด — มีคนเข้าซื้อแล้วติดเพิ่ม"
+    else:
+        trend = "สัดส่วนติดดอยค่อนข้างทรงตัว"
+
+    hold_ratio = last["old"] / (last["old"] + last["new"]) * 100 if (last["old"] + last["new"]) else 0
+    if hold_ratio >= 65:
+        hold_txt = "ฝั่งที่มีกำไรส่วนใหญ่เป็นเงินที่ถือมานาน — มือแข็ง ขายยาก"
+    elif hold_ratio >= 40:
+        hold_txt = "ฝั่งที่มีกำไรมีทั้งเงินเก่าและเงินใหม่ผสมกัน"
+    else:
+        hold_txt = "ฝั่งที่มีกำไรส่วนใหญ่เป็นเงินที่เพิ่งเข้า — มือเบา ขายง่ายเมื่อเจอแรงกดดัน"
+
+    return {
+        "rows": rows,
+        "now": {"trap": last["trap"], "old": last["old"], "new": last["new"]},
+        "label": label, "tone": tone, "trend": trend,
+        "hold_ratio": round(hold_ratio, 1), "hold_txt": hold_txt,
+        "note": ("แบ่งกลุ่มจากอายุการถือและราคาต้นทุนที่ประมาณจากวอลุ่มจริง 120 วัน "
+                 "ไม่ใช่ข้อมูลบัญชีรายบุคคล (ข้อมูลระดับนั้นไม่เปิดเผยต่อสาธารณะ)"),
+    }
+
+
 def candles(df, points=90):
     """ข้อมูลแท่งเทียน + วอลุ่ม สำหรับวาดกราฟ (ใช้ช่วงเวลาเดียวกับเส้นรุ้ง จะได้ซ้อนกันได้)"""
     if df is None or len(df) < 5:

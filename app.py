@@ -287,6 +287,11 @@ MARKET_SYMBOLS = [
     # ฟิวเจอร์สเทรดเกือบ 24 ชม. — ชี้ทิศตลาดสหรัฐช่วงที่หุ้นพัก (กลางวันไทย)
     ("NQ=F", "ฟิวเจอร์ส Nasdaq", "📈", "จุด — ชี้ทิศหุ้นเทคก่อนตลาดเปิด"),
     ("ES=F", "ฟิวเจอร์ส S&P 500", "📊", "จุด — ชี้ทิศตลาดสหรัฐก่อนเปิด"),
+    # ดัชนีหลักและตัววัดความเสี่ยงของตลาด
+    ("^GSPC", "S&P 500", "🇺🇸", "ดัชนีหุ้นใหญ่ 500 ตัวของสหรัฐ"),
+    ("^NDX", "Nasdaq 100", "💻", "ดัชนีหุ้นเทค 100 ตัว"),
+    ("^TNX", "พันธบัตร 10 ปี", "🏦", "% ผลตอบแทน — ขึ้นมากมักกดดันหุ้นเติบโต"),
+    ("^VIX", "VIX ความกลัว", "😨", "ยิ่งสูงยิ่งกลัว: <20 ปกติ · >30 ตลาดตื่นตระหนก"),
 ]
 
 
@@ -406,6 +411,7 @@ def api_flow(ticker):
         out["accumulation"] = flow_mod.accumulation_scan(df, float(df["Close"].iloc[-1]))
         out["rainbow"] = flow_mod.rainbow_gmma(df)
         out["candles"] = flow_mod.candles(df)
+        out["chips"] = flow_mod.chip_distribution(df)
     except Exception:
         out["accumulation"] = None
     return jsonify(out)
