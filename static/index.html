@@ -392,6 +392,15 @@
     padding-top:10px;border-top:1px dashed var(--border);opacity:.9}
   .acc-box{margin-top:12px;padding:12px;border-radius:var(--r-block);
     background:var(--green-bg);border:1px solid rgba(52,211,153,.4)}
+  /* กรอบกราฟที่มีแกนกำกับ — ป้ายเป็น HTML ทับบน SVG จะได้ไม่ยืดเบี้ยวตามกราฟ */
+  .cwrap{position:relative;padding-right:54px}
+  .cwrap > svg{display:block;width:100%}
+  .ylab{position:absolute;top:0;right:0;width:52px;height:100%;pointer-events:none}
+  .ylab span{position:absolute;right:2px;transform:translateY(-50%);
+    font-size:.66rem;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .ylab span.cur{color:var(--purple-hi);font-weight:800}
+  .xlab{display:flex;justify-content:space-between;font-size:.66rem;color:var(--muted);
+    margin-top:3px;padding-right:54px}
   /* กราฟการกระจายต้นทุนผู้ถือ (chip distribution) */
   .cd{margin-top:12px;padding:14px;border-radius:var(--r-block);
     background:var(--card2);border:1px solid var(--border)}
@@ -1564,6 +1573,24 @@ function fmtMoney(v){
   return s + '$' + a.toFixed(0);
 }
 
+// ===== ตัวช่วยวาดแกนกำกับกราฟ =====
+// เส้นกริดวาดใน SVG (ยืดได้ไม่มีปัญหา) ส่วนตัวเลขเป็น HTML ทับบน จะได้ไม่เบี้ยว
+function gridLines(H, W, n){
+  let g = '';
+  for(let i = 0; i < n; i++){
+    const y = (i / (n - 1)) * H;
+    g += `<line x1="0" y1="${y.toFixed(1)}" x2="${W}" y2="${y.toFixed(1)}"
+      stroke="rgba(148,163,184,.16)" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+  }
+  return g;
+}
+// vals: ค่าจากบนลงล่าง · yPct: ตำแหน่ง % ของแต่ละค่า · cur: ดัชนีที่จะเน้นเป็นราคาปัจจุบัน
+function yLabels(items){
+  return `<div class="ylab">` + items.map(it =>
+    `<span class="${it.cur ? 'cur' : ''}" style="top:${it.pct.toFixed(1)}%">${it.txt}</span>`
+  ).join('') + `</div>`;
+}
+
 // ===== การกระจายต้นทุนผู้ถือตามเวลา (chip distribution) =====
 // เขียว = ติดดอย · แดง = เงินถือยาว (มีกำไร) · เหลือง = เงินเพิ่งเข้า (มีกำไร)
 function chipsBlock(cd){
@@ -1588,13 +1615,19 @@ function chipsBlock(cd){
   const pOld  = layer('old', ['new']);
   const pTrap = layer('trap', ['new', 'old']);
   const now = cd.now;
+  const pctLabels = [100, 75, 50, 25, 0].map((v, i) => ({pct: i * 25, txt: v + '%'}));
   return `<div class="cd">
     <div style="font-weight:800;font-size:.88rem">🧊 การกระจายต้นทุนผู้ถือ ${n} วัน</div>
-    <svg class="cd-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-      <path d="${pNew}"  fill="#fbbf24" opacity=".85"/>
-      <path d="${pOld}"  fill="#f87171" opacity=".85"/>
-      <path d="${pTrap}" fill="#34d399" opacity=".8"/>
-    </svg>
+    <div class="cwrap">
+      <svg class="cd-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+        <path d="${pNew}"  fill="#fbbf24" opacity=".85"/>
+        <path d="${pOld}"  fill="#f87171" opacity=".85"/>
+        <path d="${pTrap}" fill="#34d399" opacity=".8"/>
+        ${gridLines(H, W, 5)}
+      </svg>
+      ${yLabels(pctLabels)}
+    </div>
+    <div class="xlab"><span>${escHtml(R[0].d)}</span><span>${escHtml(R[n-1].d)}</span></div>
     <div class="cd-legend">
       <span><i style="background:#34d399"></i>เขียว (บน) = ติดดอย — ต้นทุนสูงกว่าราคา</span>
       <span><i style="background:#f87171"></i>แดง (กลาง) = เงินถือยาวเกิน 60 วัน มีกำไร</span>
@@ -1664,10 +1697,27 @@ function candleChart(ck, rb, showRainbow){
       height="${h.toFixed(1)}" fill="${col}" opacity=".45"/>`;
   }).join('');
 
-  return `<svg class="ck-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-      ${bars}${overlay}</svg>
-    <svg class="ck-vol" viewBox="0 0 ${W} ${VH}" preserveAspectRatio="none" aria-hidden="true">${vols}</svg>
-    <div class="ck-axis"><span>${escHtml(ck[0].d)}</span>
+  // แกนราคา 5 ระดับ + เส้นราคาปิดล่าสุด
+  const last = ck[n-1].c;
+  const steps = [0,1,2,3,4].map(i => hi - (i/4)*(hi-lo));
+  const labels = steps.map(v => ({pct: (Y(v)/H)*100, txt: fmt(v)}));
+  labels.push({pct: (Y(last)/H)*100, txt: fmt(last), cur: true});
+  const curLine = `<line x1="0" y1="${Y(last).toFixed(1)}" x2="${W}" y2="${Y(last).toFixed(1)}"
+    stroke="var(--purple-hi)" stroke-width="1" stroke-dasharray="4 3"
+    vector-effect="non-scaling-stroke" opacity=".9"/>`;
+  const vmaxTxt = vmax >= 1e9 ? (vmax/1e9).toFixed(1)+'B'
+                : vmax >= 1e6 ? (vmax/1e6).toFixed(0)+'M' : (vmax/1e3).toFixed(0)+'K';
+
+  return `<div class="cwrap">
+      <svg class="ck-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+        ${gridLines(H, W, 5)}${bars}${overlay}${curLine}</svg>
+      ${yLabels(labels)}
+    </div>
+    <div class="cwrap">
+      <svg class="ck-vol" viewBox="0 0 ${W} ${VH}" preserveAspectRatio="none" aria-hidden="true">${vols}</svg>
+      ${yLabels([{pct: 6, txt: vmaxTxt}, {pct: 94, txt: '0'}])}
+    </div>
+    <div class="xlab"><span>${escHtml(ck[0].d)}</span>
       <span>วอลุ่มด้านล่าง · ${n} วันล่าสุด</span>
       <span>${escHtml(ck[n-1].d)}</span></div>`;
 }
@@ -1727,9 +1777,18 @@ function rainbowChart(rb){
   const longP = rb.long.map((l,i)=>
     `<path d="${path(l.v)}" fill="none" stroke="${COOL[i%6]}" stroke-width="1.6" opacity=".95"/>`).join('');
   const pricePath = `<path d="${path(rb.price)}" fill="none" stroke="rgba(255,255,255,.55)"
-    stroke-width="1" stroke-dasharray="3 3"/>`;
-  return `<svg class="rb-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-    ${longP}${shortP}${pricePath}</svg>`;
+    stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>`;
+  const lastPx = rb.price[rb.price.length - 1];
+  const steps = [0,1,2,3,4].map(i => max - (i/4)*(max-min));
+  const labels = steps.map(v => ({pct: (Y(v)/H)*100, txt: fmt(v)}));
+  labels.push({pct: (Y(lastPx)/H)*100, txt: fmt(lastPx), cur: true});
+  return `<div class="cwrap">
+    <svg class="rb-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      ${gridLines(H, W, 5)}${longP}${shortP}${pricePath}</svg>
+    ${yLabels(labels)}
+  </div>
+  <div class="xlab"><span>${escHtml(rb.dates[0])}</span>
+    <span>${escHtml(rb.dates[rb.dates.length-1])}</span></div>`;
 }
 
 function rainbowBlock(rb){
