@@ -767,6 +767,7 @@ def fundamentals(tk, price):
 # ----------------------------------------------------------------------
 _quote_cache = {}   # ticker -> (ts, quote)
 _quote_miss = {}    # ticker -> ts ที่ดึงไม่ได้ครั้งล่าสุด (กันสัญลักษณ์เสียถ่วงทุกรอบ poll)
+MISS_TTL = 300      # วิ — ใช้เฉพาะกับทางสำรองรายตัว ไม่เกี่ยวกับ batch
 QUOTE_TTL = 4.0     # วิ — แคชสั้นได้เพราะ batch ยิงครั้งเดียวได้ทุกตัว (เดิมยิงตัวละคำขอ ต้องแคช 20 วิ)
 
 # ราคาสดแบบ batch: ทุกสัญลักษณ์ในคำขอเดียว
@@ -862,11 +863,7 @@ def live_quotes(tickers, max_age=None):
     now = time.time()
     ttl = QUOTE_TTL if max_age is None else max_age
     tickers = [t.upper() for t in tickers][:40]
-    need = [t for t in tickers
-            if (t not in _quote_cache or now - _quote_cache[t][0] > ttl)
-            # สัญลักษณ์ที่เพิ่งดึงไม่ได้ พัก 10 นาทีค่อยลองใหม่ — ไม่งั้นตัวเสียตัวเดียว
-            # ลากทางสำรอง (ยิงทีละตัว + retry) เข้ามาในทุกรอบ poll ทำให้ราคาทั้งชุดช้าตาม
-            and now - _quote_miss.get(t, 0) > 600]
+    need = [t for t in tickers if t not in _quote_cache or now - _quote_cache[t][0] > ttl]
 
     if need:
         got = {}
@@ -878,7 +875,12 @@ def live_quotes(tickers, max_age=None):
             _quote_cache[t] = (now, q)
 
         # ตัวที่ batch ไม่คืนมา (สัญลักษณ์แปลก/ตลาดปิดยาว) → ลองทางเดิมทีละตัว
-        missing = [t for t in need if t not in got]
+        # เคารพ "แคชตัวที่ดึงไม่ได้" เฉพาะตรงนี้ เพราะทางนี้แพง (ยิงทีละตัว + retry)
+        # ห้ามเอาไปกรองตอนยิง batch: batch เป็นคำขอเดียวไม่ว่าจะขอกี่ตัว ใส่เพิ่มไม่มีต้นทุน
+        # ถ้ากรองตรงนั้นด้วย สัญลักษณ์ที่พลาดชั่วคราวจะหายไปทั้ง 10 นาทีทั้งที่ Yahoo
+        # กลับมาส่งให้แล้ว — เจอจริงกับ ^SPX บน Render ที่ดึงได้แล้วแต่ถูกแคชกลบไว้
+        missing = [t for t in need if t not in got
+                   and now - _quote_miss.get(t, 0) > MISS_TTL]
         if missing:
             import concurrent.futures
             ex = concurrent.futures.ThreadPoolExecutor(max_workers=8)
