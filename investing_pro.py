@@ -800,8 +800,12 @@ def _fmt_ts(epoch, tzname):
         return None
 
 
-def _batch_quotes(tickers):
-    """ยิงคำขอเดียวได้ราคาทุกตัว — คืน dict {ticker: quote} (ตัวที่ไม่มีข้อมูลจะไม่อยู่ใน dict)"""
+def _batch_quotes(tickers, keep_raw=False):
+    """ยิงคำขอเดียวได้ราคาทุกตัว — คืน dict {ticker: quote} (ตัวที่ไม่มีข้อมูลจะไม่อยู่ใน dict)
+
+    keep_raw=True จะแนบเรคอร์ดดิบของ Yahoo มาใน "_raw" ด้วย (ปกติไม่แนบ เพราะมีเป็นร้อยฟิลด์
+    และค่านี้ถูกแคชไว้ใช้ร่วมกับ /api/quotes ที่ส่งออกไปให้เบราว์เซอร์ทุกไม่กี่วินาที)
+    """
     from yfinance.data import YfData
     r = YfData().get_raw_json(_BATCH_URL, params={"symbols": ",".join(tickers)})
     out = {}
@@ -833,7 +837,22 @@ def _batch_quotes(tickers):
             "state": st or None,
             "delay": q.get("exchangeDataDelayedBy"),   # นาที — 0 = เรียลไทม์จริง
         }
+        if keep_raw:
+            out[sym]["_raw"] = q
     return out
+
+
+def raw_quotes(tickers):
+    """เรคอร์ดดิบจากฟีดราคา batch — ใช้เมื่อต้องการฟิลด์นอกเหนือจากราคา/%
+
+    แยกจาก live_quotes เพราะเรคอร์ดดิบมีเป็นร้อยฟิลด์ ไม่ควรส่งไปให้เบราว์เซอร์ทุกรอบ poll
+    ที่ต้องใช้คือหน้า "ข้อมูลพื้นฐาน" ซึ่งปกติอ่านจาก tk.info แต่ Yahoo ปิดทางนั้น
+    ให้เซิร์ฟเวอร์ในศูนย์ข้อมูล ขณะที่ฟีดนี้ยังเปิดอยู่และมี P/E P/B ปันผล EPS ครบ
+    """
+    try:
+        return _batch_quotes([t.upper() for t in tickers], keep_raw=True)
+    except Exception:
+        return {}
 
 
 def _quote_one_slow(t):

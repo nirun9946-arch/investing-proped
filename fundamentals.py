@@ -235,10 +235,16 @@ def _metrics(info, price):
         add("roe", "ROE (ผลตอบแทนต่อทุน)", f"{r:.1f}%", tone, note)
 
     # --- ปันผล ---
-    dy = _num(info.get("dividendYield"))
+    # คิดจาก "ปันผลต่อหุ้นต่อปี ÷ ราคา" เป็นหลัก เพราะไม่มีปัญหาเรื่องหน่วย
+    # ของเดิมเดาหน่วยจากขนาด (ถ้า <1 ถือว่าเป็นสัดส่วนแล้วคูณ 100) ซึ่งผิดกับหุ้นที่
+    # ปันผลต่ำกว่า 1% ทุกตัว — ตรวจแล้ว Yahoo ส่ง dividendYield มาเป็น "เปอร์เซ็นต์" เสมอ
+    # (NVDA 0.45 = 0.45% แต่ถูกอ่านเป็น 45%, AAPL 0.33 → 33%) แถมยังไปเข้าเกณฑ์
+    # "ปันผลดี ≥3%" ทำให้หุ้นเติบโตถูกป้ายว่าเป็นหุ้นปันผลชั้นดี
+    # ยืนยันด้วย dividendRate/price: NVDA 1.00/227.42 = 0.44% · KO 2.12/89.12 = 2.38%
+    rate = _num(info.get("dividendRate")) or _num(info.get("trailingAnnualDividendRate"))
+    dy = (rate / price * 100) if (rate and price) else _num(info.get("dividendYield"))
     if dy:
-        # Yahoo ส่งมาได้ทั้งรูปสัดส่วน (0.025) และเปอร์เซ็นต์ (2.5) — เดาจากขนาด
-        d = dy * 100 if dy < 1 else dy
+        d = dy
         pr = _num(info.get("payoutRatio"))
         tone = "good" if d >= 3 else "ok"
         note = f"ได้ปันผลระหว่างถือ{' · จ่ายจากกำไร ' + format(pr*100, '.0f') + '%' if pr else ''}"
@@ -448,6 +454,200 @@ def get_earnings(ticker, force=False):
     return payload
 
 
+def _row(df, names):
+    """ดึงแถวจากงบการเงินตามชื่อบรรทัด (Yahoo ตั้งชื่อไม่เหมือนกันทุกบริษัท จึงลองหลายชื่อ)"""
+    if df is None or getattr(df, "empty", True):
+        return None
+    for n in names:
+        for idx in df.index:
+            if str(idx).strip() == n:
+                return df.loc[idx]
+    return None
+
+
+def _latest(row):
+    """ค่าล่าสุด (คอลัมน์ซ้ายสุด = งวดใหม่สุด)"""
+    if row is None:
+        return None
+    for val in row:
+        v = _num(val)
+        if v is not None:
+            return v
+    return None
+
+
+def _prev(row):
+    """ค่างวดก่อนหน้า — ใช้คำนวณอัตราเติบโต"""
+    if row is None:
+        return None
+    seen = 0
+    for val in row:
+        v = _num(val)
+        if v is None:
+            continue
+        seen += 1
+        if seen == 2:
+            return v
+    return None
+
+
+def _ttm(row, n=4):
+    """รวม n ไตรมาสล่าสุด = ตัวเลข 12 เดือนย้อนหลัง
+
+    ต้องใช้ TTM ไม่ใช่งบรายปี เพราะ tk.info รายงานเป็น TTM — ถ้าเทียบกับปีบัญชีล่าสุด
+    บริษัทที่โตเร็วจะเพี้ยนมาก (วัดกับ NVDA: มาร์จิ้นสุทธิ 55.6% แบบรายปี เทียบกับ
+    63.7% แบบ TTM ที่ Yahoo รายงาน)
+    """
+    if row is None:
+        return None
+    vals = [v for v in (_num(x) for x in row) if v is not None][:n]
+    return sum(vals) if len(vals) == n else None
+
+
+def _ttm_prev(row, n=4):
+    """TTM ของ 4 ไตรมาสก่อนหน้า — ใช้เทียบอัตราเติบโตแบบ TTM ต่อ TTM"""
+    if row is None:
+        return None
+    vals = [v for v in (_num(x) for x in row) if v is not None][n:n * 2]
+    return sum(vals) if len(vals) == n else None
+
+
+def _yoy(row, n=4):
+    """โตเทียบไตรมาสเดียวกันปีก่อน (งวดล่าสุด ÷ งวดที่ n ก่อนหน้า)
+
+    ใช้เมื่อเทียบ TTM ต่อ TTM ไม่ได้ — Yahoo ให้งบรายไตรมาสมาแค่ 5-6 งวด
+    ซึ่งไม่พอสำหรับ TTM สองชุด (ต้องใช้ 8 งวด)
+    ห้ามถอยไปเทียบ "ไตรมาสก่อนหน้า" เฉยๆ เพราะเป็นคนละตัวชี้วัด และจะเพี้ยนหนัก
+    กับธุรกิจที่มีฤดูกาล — วัดกับ NVDA: เทียบไตรมาสติดกันได้ 19.8% แต่ของจริงเทียบปีต่อปี 85%
+    """
+    if row is None:
+        return None
+    vals = [v for v in (_num(x) for x in row) if v is not None]
+    if len(vals) > n and vals[n]:
+        return vals[0] / vals[n] - 1
+    return None
+
+
+def _div(a, b):
+    return (a / b) if (a is not None and b) else None
+
+
+def _growth(row):
+    a, b = _latest(row), _prev(row)
+    return ((a / b - 1) if (a is not None and b) else None)
+
+
+def _info_fallback(ticker):
+    """สร้าง info ขึ้นมาเองเมื่อ tk.info ว่าง
+
+    ทำไมต้องมี: Yahoo ไม่ส่ง quoteSummary (ซึ่งคือที่มาของ tk.info) ให้ IP ศูนย์ข้อมูล
+    หน้า "ข้อมูลพื้นฐาน" บนเว็บออนไลน์เลยพังทั้งหน้า ขึ้น 404 ตลอด (เจอ 3 ก.ย. 69)
+    แต่ของอีกสองแหล่งยังใช้ได้ปกติบน Render — ตรวจแล้วไม่ใช่เดา:
+      • ฟีดราคาแบบ batch (v7/finance/quote) → มูลค่าตลาด P/E P/B ปันผล EPS ราคา
+      • งบการเงิน (income_stmt / balance_sheet / cashflow) → มาร์จิ้น เติบโต หนี้ ROE FCF
+    จึงประกอบสองแหล่งนี้ให้ได้ค่าเกือบครบเท่า tk.info
+    ที่ได้คืนมาไม่ได้จริง ๆ มีแค่ sector/industry ซึ่งเป็นป้ายชื่อ ไม่ใช่ตัวเลขที่ใช้ตัดสินใจ
+    """
+    import investing_pro as _core
+    out = {}
+
+    q = _core.raw_quotes([ticker]).get(ticker.upper())
+    if q and q.get("_raw"):
+        r = q["_raw"]
+        out.update({
+            "marketCap": r.get("marketCap"),
+            "regularMarketPrice": r.get("regularMarketPrice"),
+            "previousClose": r.get("regularMarketPreviousClose"),
+            "trailingPE": r.get("trailingPE"),
+            "forwardPE": r.get("forwardPE"),
+            "priceToBook": r.get("priceToBook"),
+            "longName": r.get("longName"),
+            "shortName": r.get("shortName") or r.get("displayName"),
+            "fullExchangeName": r.get("fullExchangeName"),
+            "exchange": r.get("exchange"),
+            "quoteType": r.get("quoteType"),
+        })
+        # หน่วยเดียวกับ tk.info เป๊ะ: dividendYield เป็นเปอร์เซ็นต์, dividendRate เป็นบาท/ดอลลาร์ต่อหุ้น
+        out["dividendYield"] = _num(r.get("dividendYield"))
+        out["dividendRate"] = _num(r.get("dividendRate")) or _num(r.get("trailingAnnualDividendRate"))
+
+    if not out.get("marketCap") and not out.get("regularMarketPrice"):
+        return out          # ฟีดราคาก็ไม่มา — ไม่ต้องเสียเวลาโหลดงบ
+
+    tk = yf.Ticker(ticker)
+
+    def grab(name, fallback=None):
+        for attr in (name, fallback):
+            if not attr:
+                continue
+            try:
+                df = getattr(tk, attr)
+                if df is not None and not getattr(df, "empty", True):
+                    return df
+            except Exception:
+                pass
+        return None
+
+    # งบ "รายไตรมาส" เป็นหลัก แล้วรวม 4 ไตรมาสเป็น TTM ให้ตรงหน่วยกับ tk.info
+    # ถอยไปใช้งบรายปีเมื่อบริษัทไม่มีงบรายไตรมาส (หุ้นเล็ก/ตลาดต่างประเทศบางแห่ง)
+    inc = grab("quarterly_income_stmt", "income_stmt")
+    bal = grab("quarterly_balance_sheet", "balance_sheet")
+    cf = grab("quarterly_cashflow", "cashflow")
+
+    rev = _row(inc, ["Total Revenue"])
+    ni = _row(inc, ["Net Income", "Net Income Common Stockholders"])
+    gross = _row(inc, ["Gross Profit"])
+    op = _row(inc, ["Operating Income", "EBIT"])
+
+    # ถ้ารวม 4 ไตรมาสไม่ครบ (งบรายปี หรือไตรมาสไม่พอ) ให้ใช้ค่างวดล่าสุดแทน
+    rev_t = _ttm(rev) or _latest(rev)
+    ni_t = _ttm(ni) or _latest(ni)
+
+    out.setdefault("profitMargins", _div(ni_t, rev_t))
+    out.setdefault("grossMargins", _div(_ttm(gross) or _latest(gross), rev_t))
+    out.setdefault("operatingMargins", _div(_ttm(op) or _latest(op), rev_t))
+
+    rev_p, ni_p = _ttm_prev(rev), _ttm_prev(ni)
+    out.setdefault("revenueGrowth",
+                   (rev_t / rev_p - 1) if (rev_t and rev_p) else _yoy(rev))
+    out.setdefault("earningsGrowth",
+                   (ni_t / ni_p - 1) if (ni_t and ni_p) else _yoy(ni))
+
+    # งบดุลเป็นภาพ ณ วันสิ้นงวด ไม่ใช่ยอดสะสม → ใช้ไตรมาสล่าสุดตรงๆ ห้ามรวม
+    eq = _latest(_row(bal, ["Stockholders Equity", "Total Equity Gross Minority Interest"]))
+    debt = _latest(_row(bal, ["Total Debt"]))
+    if debt is None:      # บางบริษัทไม่มีบรรทัด Total Debt ต้องบวกหนี้สั้น+ยาวเอง
+        sd = _latest(_row(bal, ["Current Debt", "Current Debt And Capital Lease Obligation"]))
+        ld = _latest(_row(bal, ["Long Term Debt", "Long Term Debt And Capital Lease Obligation"]))
+        debt = (sd or 0) + (ld or 0) if (sd or ld) else None
+    # เรียงจาก "กว้าง" ไป "แคบ": tk.info นับเงินสด+เงินลงทุนระยะสั้นเป็น totalCash
+    cash = _latest(_row(bal, ["Cash Cash Equivalents And Short Term Investments",
+                              "Cash And Cash Equivalents"]))
+    ca = _latest(_row(bal, ["Current Assets", "Total Current Assets"]))
+    cl = _latest(_row(bal, ["Current Liabilities", "Total Current Liabilities"]))
+
+    out.setdefault("returnOnEquity", _div(ni_t, eq))
+    # tk.info ส่ง debtToEquity มาเป็นเปอร์เซ็นต์ (เช่น 45.2) ไม่ใช่สัดส่วน — คูณ 100 ให้ตรงกัน
+    dte = _div(debt, eq)
+    out.setdefault("debtToEquity", (dte * 100) if dte is not None else None)
+    out.setdefault("totalDebt", debt)
+    out.setdefault("totalCash", cash)
+    out.setdefault("currentRatio", _div(ca, cl))
+
+    ocf_row = _row(cf, ["Operating Cash Flow", "Cash Flow From Continuing Operating Activities"])
+    capex_row = _row(cf, ["Capital Expenditure"])
+    ocf = _ttm(ocf_row) or _latest(ocf_row)
+    capex = _ttm(capex_row) or _latest(capex_row)
+    if ocf is not None:
+        out.setdefault("freeCashflow", ocf + (capex or 0))   # capex ติดลบมาอยู่แล้ว
+    div_row = _row(cf, ["Cash Dividends Paid", "Common Stock Dividend Paid"])
+    div_paid = _ttm(div_row) or _latest(div_row)
+    if div_paid is not None and ni_t:
+        out.setdefault("payoutRatio", abs(div_paid) / ni_t)
+
+    return {k: v for k, v in out.items() if v is not None}
+
+
 def get_fundamentals(ticker, force=False):
     """คืนข้อมูลพื้นฐานรายตัว + คำอธิบายภาษาไทย + ชุดข้อมูลกราฟรายปี"""
     ticker = ticker.strip().upper()
@@ -461,6 +661,12 @@ def get_fundamentals(ticker, force=False):
         info = tk.info or {}
     except Exception:
         info = {}
+    partial = False
+    if not info.get("marketCap") and not info.get("regularMarketPrice"):
+        # tk.info ว่าง — บนเซิร์ฟเวอร์เกิดตลอดเพราะ Yahoo ปิด quoteSummary ให้ IP ศูนย์ข้อมูล
+        # ประกอบเองจากฟีดราคา + งบการเงิน ซึ่งยังดึงได้ แทนที่จะตอบ 404 ทิ้งทั้งหน้า
+        info = _info_fallback(ticker)
+        partial = True
     if not info.get("marketCap") and not info.get("regularMarketPrice"):
         return {"ok": False, "error": f"ไม่มีข้อมูลพื้นฐานของ {ticker} (อาจเป็น ETF หรือ Yahoo ไม่ให้ข้อมูล)"}
 
@@ -476,6 +682,8 @@ def get_fundamentals(ticker, force=False):
         "metrics": _metrics(info, price),
         "annual": _annual(tk),
         "quote_type": info.get("quoteType"),
+        # บอกตรงๆ ว่าชุดนี้ประกอบเอง ไม่ได้มาจากแหล่งเต็ม (sector/industry จะว่าง)
+        "partial": partial,
     }
     _cache[ticker] = (now, payload)
     if len(_cache) > 60:
