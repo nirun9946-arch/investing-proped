@@ -765,47 +765,143 @@ def fundamentals(tk, price):
 # ----------------------------------------------------------------------
 # Analysis engine
 # ----------------------------------------------------------------------
-_quote_cache = {}  # ticker -> (ts, quote) — แคช 20 วิ กันยิงถี่เกินเมื่อมีผู้ใช้หลายคน
+_quote_cache = {}   # ticker -> (ts, quote)
+_quote_miss = {}    # ticker -> ts ที่ดึงไม่ได้ครั้งล่าสุด (กันสัญลักษณ์เสียถ่วงทุกรอบ poll)
+QUOTE_TTL = 4.0     # วิ — แคชสั้นได้เพราะ batch ยิงครั้งเดียวได้ทุกตัว (เดิมยิงตัวละคำขอ ต้องแคช 20 วิ)
+
+# ราคาสดแบบ batch: ทุกสัญลักษณ์ในคำขอเดียว
+# วัดจริง 3 ก.ย. 69 — 8 ตัว: ทางเดิม (history รายตัว) 3.72 วิ · ทางนี้ 0.11 วิ (เร็วกว่า 34 เท่า)
+# และได้ของที่ history ไม่มี: ราคาปิด session ทางการ, % ทางการ, ราคา pre/post แยกช่อง,
+# marketState รายตัว และ exchangeDataDelayedBy (ดีเลย์จริงของแต่ละตลาด)
+_BATCH_URL = "https://query2.finance.yahoo.com/v7/finance/quote"
 
 
-def live_quotes(tickers):
-    """ราคาสดแบบเบา: แท่งนาทีล่าสุด (รวม pre/post) — เร็วพอสำหรับ polling ทุก 30 วิ"""
-    import concurrent.futures
-    now = time.time()
-    tickers = [t.upper() for t in tickers][:20]
+def _fmt_ts(epoch, tzname):
+    """epoch → 'YYYY-MM-DD HH:MM:SS+07:00' ตามโซนของตลาดนั้น
 
-    def one(t):
+    ฝั่งเว็บอ่าน ts นี้ 2 ทาง: Date.parse() (ต้องมี offset ถึงจะไม่เพี้ยน)
+    และ regex จับ HH:MM เพื่อโชว์ "ดีลสุดท้าย HH:MM น. NY" → ต้องเป็นเวลาตลาด ไม่ใช่ UTC
+    """
+    if not epoch:
+        return None
+    try:
+        from datetime import datetime, timezone
         try:
-            tk = yf.Ticker(t)
-            h = tk.history(period="1d", interval="1m", prepost=True)
-            if h is None or h.empty:
-                return None
-            last = float(h["Close"].iloc[-1])
-            prev = prev_close(t, tk)  # จาก daily history (แคชแยก 10 นาที) ไม่ใช่ fast_info
-            return {"ticker": t, "price": last,
-                    "chg": (last / prev - 1) * 100 if prev else None,
-                    "ts": str(h.index[-1])}
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(tzname) if tzname else timezone.utc
         except Exception:
-            return None
+            tz = timezone.utc
+        d = datetime.fromtimestamp(float(epoch), tz)
+        off = d.strftime("%z")                      # '+0700'
+        off = (off[:3] + ":" + off[3:]) if off else "+00:00"
+        return d.strftime("%Y-%m-%d %H:%M:%S") + off
+    except Exception:
+        return None
 
-    need = [t for t in tickers if t not in _quote_cache or now - _quote_cache[t][0] > 20]
+
+def _batch_quotes(tickers):
+    """ยิงคำขอเดียวได้ราคาทุกตัว — คืน dict {ticker: quote} (ตัวที่ไม่มีข้อมูลจะไม่อยู่ใน dict)"""
+    from yfinance.data import YfData
+    r = YfData().get_raw_json(_BATCH_URL, params={"symbols": ",".join(tickers)})
+    out = {}
+    for q in (r.get("quoteResponse") or {}).get("result") or []:
+        sym = q.get("symbol")
+        reg = q.get("regularMarketPrice")
+        if not sym or reg is None:
+            continue
+        tz = q.get("exchangeTimezoneName")
+        st = q.get("marketState") or ""
+        # ราคา "สดที่สุด" ที่จะเอาไปโชว์: ถ้ามีดีลนอกเวลาให้ใช้ดีลนั้น ไม่งั้นใช้ราคาปกติ
+        # PREPRE/CLOSED ยังยึด postMarketPrice เพราะเป็นดีลล่าสุดที่เกิดขึ้นจริง
+        px, ts_ep = reg, q.get("regularMarketTime")
+        if st.startswith("PRE") and q.get("preMarketPrice") is not None:
+            px, ts_ep = q["preMarketPrice"], q.get("preMarketTime")
+        elif q.get("postMarketPrice") is not None and st in ("POST", "POSTPOST", "PREPRE", "CLOSED"):
+            px, ts_ep = q["postMarketPrice"], q.get("postMarketTime")
+        prev = q.get("regularMarketPreviousClose")
+        out[sym] = {
+            "ticker": sym,
+            "price": float(px),
+            "chg": ((float(px) / prev - 1) * 100) if prev else None,
+            "ts": _fmt_ts(ts_ep, tz),
+            # ราคาปิด session ทางการ + % ทางการของ Yahoo — ตรงกับที่ Google/โบรกโชว์
+            # ฝั่งเว็บเอาไปแทน r.price ตอนนอกเวลา ทำให้พาดหัวไม่ค้างเป็นของรอบสแกนก่อน
+            "reg_price": float(reg),
+            "reg_chg": q.get("regularMarketChangePercent"),
+            "prev_close": prev,
+            "state": st or None,
+            "delay": q.get("exchangeDataDelayedBy"),   # นาที — 0 = เรียลไทม์จริง
+        }
+    return out
+
+
+def _quote_one_slow(t):
+    """ทางสำรองรายตัว (แท่ง 1 นาทีล่าสุด) — ใช้เมื่อ batch ใช้ไม่ได้"""
+    try:
+        tk = yf.Ticker(t)
+        h = tk.history(period="1d", interval="1m", prepost=True)
+        if h is None or h.empty:
+            return None
+        last = float(h["Close"].iloc[-1])
+        prev = prev_close(t, tk)
+        return {"ticker": t, "price": last,
+                "chg": (last / prev - 1) * 100 if prev else None,
+                "ts": str(h.index[-1]), "prev_close": prev}
+    except Exception:
+        return None
+
+
+def live_quotes(tickers, max_age=None):
+    """ราคาสดของทุกตัวที่ขอมา — batch ก่อน ถ้าไม่ได้ค่อยถอยไปทางเดิมรายตัว
+
+    max_age = ยอมให้ค่าในแคชเก่าได้กี่วินาที (ไม่ใส่ = QUOTE_TTL)
+    เธรดอุ่นเบื้องหลังส่งค่าที่สั้นกว่ามา เพื่อ "รีเฟรชก่อนแคชหมดอายุ" —
+    ถ้าใช้ TTL เดียวกับคำขอของผู้ใช้ เธรดอุ่นจะเจอแคชที่ยังไม่หมดอายุแล้วไม่ทำอะไรเลย
+    กลายเป็นว่าผู้ใช้ยังต้องเป็นคนรอ Yahoo เองอยู่ดี (วัดได้: ช้าสลับเร็ว 180/18 มิลลิวินาที)
+    """
+    now = time.time()
+    ttl = QUOTE_TTL if max_age is None else max_age
+    tickers = [t.upper() for t in tickers][:40]
+    need = [t for t in tickers
+            if (t not in _quote_cache or now - _quote_cache[t][0] > ttl)
+            # สัญลักษณ์ที่เพิ่งดึงไม่ได้ พัก 10 นาทีค่อยลองใหม่ — ไม่งั้นตัวเสียตัวเดียว
+            # ลากทางสำรอง (ยิงทีละตัว + retry) เข้ามาในทุกรอบ poll ทำให้ราคาทั้งชุดช้าตาม
+            and now - _quote_miss.get(t, 0) > 600]
+
     if need:
-        # รอบแรก (แคชเย็น) ต้องดึงทุกตัวพร้อมกัน — เดิม deadline 15 วิ ทำให้บางตัวไม่ทัน
-        # แล้วการ์ดตัวนั้นตกไปใช้ราคาเก่า → เห็นข้อมูลไม่เท่ากันระหว่างการ์ด
-        deadline = 30 if len(need) > 5 else 15
-        ex = concurrent.futures.ThreadPoolExecutor(max_workers=12)
+        got = {}
         try:
-            futs = {ex.submit(one, t): t for t in need}
-            done, _ = concurrent.futures.wait(futs, timeout=deadline)
-            for f in done:
-                try:
-                    q = f.result()
+            got = _batch_quotes(need)
+        except Exception:
+            got = {}
+        for t, q in got.items():
+            _quote_cache[t] = (now, q)
+
+        # ตัวที่ batch ไม่คืนมา (สัญลักษณ์แปลก/ตลาดปิดยาว) → ลองทางเดิมทีละตัว
+        missing = [t for t in need if t not in got]
+        if missing:
+            import concurrent.futures
+            ex = concurrent.futures.ThreadPoolExecutor(max_workers=8)
+            try:
+                futs = {ex.submit(_quote_one_slow, t): t for t in missing}
+                done, _ = concurrent.futures.wait(futs, timeout=20)
+                for f in done:
+                    t = futs[f]
+                    try:
+                        q = f.result()
+                    except Exception:
+                        q = None
                     if q:
-                        _quote_cache[futs[f]] = (now, q)
-                except Exception:
-                    pass
-        finally:
-            ex.shutdown(wait=False)
+                        _quote_cache[t] = (now, q)
+                        _quote_miss.pop(t, None)
+                    else:
+                        _quote_miss[t] = now
+                for f, t in futs.items():
+                    if f not in done:
+                        _quote_miss[t] = now
+            finally:
+                ex.shutdown(wait=False)
+
     return [_quote_cache[t][1] for t in tickers if t in _quote_cache]
 
 

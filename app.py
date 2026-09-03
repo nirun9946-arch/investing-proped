@@ -18,6 +18,7 @@ import hashlib
 import re
 import secrets
 import threading
+import time
 
 import ai as ai_mod
 import fundamentals as fund_mod
@@ -269,10 +270,49 @@ def api_flows():
         return jsonify({"error": str(e), "items": []}), 500
 
 
+# ===== ตัวอุ่นราคาเบื้องหลัง =====
+# ปัญหาเดิม: คำขอราคาของผู้ใช้ต้องรอ Yahoo ตอบก่อนเสมอ → หน่วงเพิ่มทุกครั้งที่แคชหมดอายุ
+# ตอนนี้มีเธรดคอยดึงราคาของตัวที่ "มีคนดูอยู่" ไว้ล่วงหน้า คำขอจริงจึงอ่านจากแคชได้ทันที
+# (batch ยิงครั้งเดียวได้ทุกตัว จึงอุ่นทุก 2.5 วิได้โดยไม่กวน Yahoo มากกว่าเดิม)
+_HOT = {}                  # ticker -> เวลาที่มีคนขอล่าสุด
+_HOT_TTL = 120             # วิ — ไม่มีใครขอเกินนี้ ถือว่าเลิกดูแล้ว หยุดอุ่น
+_WARM_EVERY = 2.0
+
+
+def _mark_hot(tickers):
+    now = time.time()
+    for t in tickers:
+        _HOT[t.upper()] = now
+
+
+def _warm_loop():
+    while True:
+        try:
+            now = time.time()
+            hot = [t for t, ts in list(_HOT.items()) if now - ts < _HOT_TTL]
+            for t, ts in list(_HOT.items()):
+                if now - ts >= _HOT_TTL:
+                    _HOT.pop(t, None)
+            if hot:
+                # ขอให้รีเฟรชถ้าเก่ากว่ารอบอุ่นนิดเดียว — ต้องสั้นกว่า QUOTE_TTL ของฝั่งคำขอ
+                # แคชที่ผู้ใช้เห็นจึงใหม่กว่าเส้นหมดอายุเสมอ และไม่มีใครต้องรอ Yahoo
+                core.live_quotes(hot, max_age=_WARM_EVERY * 0.8)
+                time.sleep(_WARM_EVERY)
+            else:
+                time.sleep(5)      # ไม่มีคนดู → นอนยาว ไม่ยิง Yahoo เปล่าๆ
+        except Exception:
+            time.sleep(5)
+
+
+threading.Thread(target=_warm_loop, daemon=True, name="quote-warmer").start()
+
+
 @app.route("/api/quotes")
 def api_quotes():
     try:
-        return jsonify({"quotes": core.live_quotes(_tickers_param())})
+        ts = _tickers_param()
+        _mark_hot(ts)
+        return jsonify({"quotes": core.live_quotes(ts)})
     except Exception as e:
         return jsonify({"error": str(e), "quotes": []}), 500
 
@@ -296,7 +336,9 @@ MARKET_SYMBOLS = [
 def api_market():
     """ราคาเรียลไทม์ตลาดโลก: ทองคำ / น้ำมัน / บิตคอยน์ / ดัชนีดอลลาร์"""
     try:
-        quotes = {q["ticker"]: q for q in core.live_quotes([s[0] for s in MARKET_SYMBOLS])}
+        syms = [s[0] for s in MARKET_SYMBOLS]
+        _mark_hot(syms)
+        quotes = {q["ticker"]: q for q in core.live_quotes(syms)}
         out = []
         for sym, name, icon, unit in MARKET_SYMBOLS:
             q = quotes.get(sym)

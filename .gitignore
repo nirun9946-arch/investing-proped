@@ -6,3 +6,5 @@ reports/
 tunnel.log
 cloudflared.exe
 *.bak
+_server.log
+_server.err

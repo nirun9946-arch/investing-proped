@@ -153,6 +153,13 @@
   .lrow:hover{border-color:rgba(115,66,226,.45);transform:translateX(2px)}
   .lrow.v-buy{border-left-color:var(--green)} .lrow.v-sell{border-left-color:var(--red)}
   .lrow.v-hold{border-left-color:var(--yellow)}
+  /* .v-buy/.v-sell/.v-hold เป็นคลาสรวมที่ใช้ทั้งกับป้ายและกับตัวแถว
+     พอไปอยู่บนแถว สีของ "คำแนะนำ" จะไหลลงไปย้อมชื่อหุ้นกับราคาด้วย ชนกับสีของ
+     "% วันนี้" ที่อยู่ติดกัน — เขียว/แดงสองความหมายในแถวเดียว อ่านผิดง่ายมาก
+     (เช่น PLTR ราคาเขียวเพราะแนะนำซื้อ แต่ข้างๆ เป็น -5.81% สีแดง)
+     ตรึงชื่อหุ้นกับราคาเป็นสีปกติ ปล่อยขอบซ้าย+ป้ายเป็นตัวบอกคำแนะนำแทน
+     สีเขียว/แดงในแถวจึงเหลือความหมายเดียว = ขึ้น/ลงวันนี้ */
+  .lrow .lt b, .lrow .lpx > b{color:var(--text)}
   .lrow .lt{min-width:0;flex:1}
   .lrow .lt b{font-size:1rem;font-weight:800;letter-spacing:.3px}
   .lrow .lt .lsec{display:block;font-size:.68rem;color:var(--muted);margin-top:1px;
@@ -167,6 +174,8 @@
     white-space:nowrap;font-variant-numeric:tabular-nums}
   /* ต้องทับ .lrow .lpx b ที่เป็น display:block (ของราคาหลัก) ไม่งั้นตัวเลขตกบรรทัด */
   .lrow .loh b{display:inline;color:var(--text);font-weight:700;font-size:.67rem;margin:0 3px}
+  .lv-badge .vb-ic{font-style:normal}
+  .lv-badge .vb-tx{margin-left:4px}
   .lrow .lv-badge{flex:none;font-size:.68rem;font-weight:800;padding:3px 8px;border-radius:8px;
     white-space:nowrap}
   .lrow .lflag{position:absolute;top:-5px;right:8px;font-size:.62rem;font-weight:800;
@@ -859,7 +868,9 @@
     #mktbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
       padding:10px 12px 2px;gap:8px;scroll-snap-type:x mandatory}
     #mktbar::-webkit-scrollbar{display:none}
-    .mk-item{min-width:150px;flex:0 0 auto;scroll-snap-align:start;padding:8px 12px}
+    .mk-item{min-width:132px;flex:0 0 auto;scroll-snap-align:start;padding:7px 10px;gap:8px}
+    .mk-ic{font-size:1.1rem}
+    .mk-px{font-size:.95rem}
     .mk-ta-hint{display:none}
     .card{padding:14px}
     .price{font-size:2rem}                 /* ราคาคือข้อมูลสำคัญสุด — ทำให้อ่านง่าย */
@@ -898,6 +909,56 @@
     .mid{display:grid;grid-template-rows:0fr;transition:grid-template-rows .4s var(--ease-spring)}
     .mid.open{grid-template-rows:1fr}
     .mid-in{display:block;overflow:hidden;min-height:0}
+
+    /* ===== รอบสอง: คืนพื้นที่จอให้รายการหุ้น =====
+       วัดจริงบนจอ 375x812: หัวเว็บกินสูง 162px ค้างอยู่ตลอด (20% ของจอ)
+       และกว่าจะถึงหุ้นตัวแรกต้องเลื่อนลง 883px = เกินหนึ่งจอเต็ม */
+
+    /* หัวเว็บเหลือสองแถวเตี้ย: [โลโก้ ...... สแกน เมนู] / [ช่องค้นหา + ปุ่ม]
+       ปุ่มยาว ๆ กลายเป็นไอคอน — ยังกดได้ครบเท่าเดิม แต่ไม่กินบรรทัดละปุ่ม */
+    header{padding:8px 10px;transition:transform .25s ease}
+    .nav-inner{gap:6px;row-gap:7px}
+    header h1{order:1;font-size:1.02rem;white-space:nowrap}
+    #scanBtn{order:2;flex:0 0 auto;width:40px;padding:0;height:36px;
+      font-size:0;justify-content:center;margin-left:auto}
+    #scanBtn::after{content:"🔄";font-size:1.05rem}    /* 🔄 ซ่อนข้อความ เหลือไอคอน */
+    #menuBtn{order:3;margin-left:0;height:36px;width:38px}
+    /* basis 240 (ไม่ใช่ 100%) — ช่องค้นหาตกลงมาแถวสอง แต่ยังเหลือที่ให้ปุ่ม 🔍 ยืนข้าง ๆ
+       ถ้าใช้ 100% ปุ่มจะโดนดันไปแถวสาม หัวเว็บสูงขึ้นอีกบรรทัดโดยไม่จำเป็น */
+    .addbox{order:4;flex:1 1 240px;gap:6px;min-width:0}
+    .addbox input{height:38px;font-size:.92rem;min-width:0}
+    /* ปุ่ม "ดูข้อมูลหุ้น" ไม่เคยตั้ง order → ได้ค่า 0 เลยแซงขึ้นไปอยู่หน้าโลโก้
+       (บนจอเล็กเห็นเป็นปุ่มม่วงลอยซ้ายสุดก่อนชื่อเว็บ) — ตรึงไว้ท้ายช่องค้นหา */
+    #lookupBtn{order:5;flex:0 0 auto;width:44px;padding:0;height:38px;
+      font-size:0;justify-content:center}
+    #lookupBtn::after{content:"🔍";font-size:1.05rem}  /* 🔍 */
+    #authWrap{order:6;display:none}        /* เข้าสู่ระบบมีอยู่ในเมนู ☰ แล้ว */
+
+    /* เลื่อนลง = ซ่อนหัวเว็บ · เลื่อนขึ้น = โผล่กลับมา (แพตเทิร์นมาตรฐานบนมือถือ)
+       ระหว่างไล่ดูรายการหุ้นจึงได้ความสูงจอคืนมาเต็ม ๆ */
+    body.hdr-hide header{transform:translateY(-100%)}
+
+    /* ช่องกรอกมูลค่าพอร์ต = ตั้งค่าครั้งเดียว ไม่ใช่ของที่ต้องเห็นทุกวัน → บีบให้เตี้ย */
+    #portbar{padding:8px 12px 0}
+    #portbar .hint{display:none}
+    #portbar .pb-box{font-size:.82rem;padding:7px 10px}
+    #portTabs{padding:10px 12px 0}
+
+    /* แถวหุ้น — วัดจริงบนจอ 375: แถวกว้าง 351 แต่ถูกแบ่งไปหมดแล้ว
+       (กราฟจิ๋ว 42 + ราคา 125 + ป้าย 92 + ปุ่มลบ 20 + ช่องไฟ) เหลือชื่อหุ้นแค่ 15px
+       ตัวอักษรเลยล้นกล่องไปทับกราฟ และชื่อหมวดโดนตัดเหลือ "ซ..."
+       คืนที่ด้วยการตัดกราฟจิ๋วทิ้ง (แตะเข้าไปดูกราฟเต็มได้) + ย่อป้ายเหลืออีโมจิ
+       สีขอบซ้ายของแถวบอกคำแนะนำอยู่แล้ว ส่วนคำเต็มยังอ่านได้จากการกดค้าง */
+    #grid{gap:8px}
+    .lrow{gap:8px;padding:10px 11px}
+    .lrow .lspark{display:none}
+    .lrow .lv-badge .vb-tx{display:none}
+    .lrow .lv-badge{padding:4px 7px;font-size:.8rem}
+    .lrow .lt{flex:1 1 auto;min-width:96px}
+    .lrow .lt b{font-size:1.06rem}
+    .lrow .lt .lsec{font-size:.72rem}
+    .lrow .lpx b{font-size:1.12rem}
+    .lrow .lpx .lchg{font-size:.86rem}
   }
 </style>
 </head>
@@ -1508,11 +1569,16 @@ function priceView(r, lq){
   if(reg){
     // ตลาดเปิด/ไม่ทราบสถานะ: ราคาสดคือความจริง
     const price = lq ? lq.price : (r ? r.price : null);
-    const chg   = (lq && lq.chg != null) ? lq.chg : (r ? r.change_pct : null);
+    const chg   = (lq && lq.reg_chg != null) ? lq.reg_chg
+                : (lq && lq.chg != null) ? lq.chg
+                : (r ? r.change_pct : null);
     return {price, chg, oh:null};
   }
-  // นอกเวลาทำการ: พาดหัว = ราคาปิด/ล่าสุดของ session จริง (จาก analyze)
-  const base = r ? r.price : null;
+  // นอกเวลาทำการ: พาดหัว = ราคาปิด/ล่าสุดของ session จริง
+  // ฟีดสดส่ง reg_price/reg_chg (ราคาปิด + % ทางการของ Yahoo) มาด้วย ให้ใช้ก่อนเสมอ —
+  // ค่าใน r มาจากรอบสแกนล่าสุด ซึ่งค้างได้เป็นสิบนาทีถ้าเปิดหน้าเว็บทิ้งไว้
+  const base = (lq && lq.reg_price != null) ? lq.reg_price : (r ? r.price : null);
+  const baseChg = (lq && lq.reg_chg != null) ? lq.reg_chg : (r ? r.change_pct : null);
   // เฉพาะ PRE เท่านั้นที่เป็น pre-market จริง (4:00-9:30 น. นิวยอร์ก)
   // PREPRE = กลางดึกก่อนถึงเวลา pre-market → ราคาล่าสุดคือ after-hours ของเมื่อคืน
   // ป้าย 🌅 ต้องมีดีล pre จริงรองรับ: มี pre_price จาก Yahoo หรือราคาสดที่เพิ่งเทรดไม่เกิน 15 นาที
@@ -1524,7 +1590,7 @@ function priceView(r, lq){
   // ราคานอกเวลา วัด % จากราคาปิด session — ไม่ปนกับการวิ่งของ session
   if(ohRaw != null && base && Math.abs(ohRaw - base) > 1e-6)
     oh = {price: ohRaw, chg: (ohRaw / base - 1) * 100, pre: isPre};
-  return {price: base, chg: (r ? r.change_pct : null), oh};
+  return {price: base, chg: baseChg, oh};
 }
 
 // สร้าง HTML บรรทัดราคานอกเวลา (ใช้ทั้งตอนเรนเดอร์การ์ดและตอน poll เพื่อให้ตรงกันเสมอ)
@@ -3044,6 +3110,18 @@ function miniSpark(r){
 }
 
 // แถวรายการ: ชื่อ + กราฟจิ๋ว + ราคา/% + คำตัดสิน — แตะทั้งแถวเพื่อดูข้อมูลทั้งหมด
+// ป้ายคำแนะนำ — แยก "อีโมจิ" กับ "คำ" คนละ span
+// จอเล็กซ่อนเฉพาะคำ (เหลืออีโมจิ) เพราะป้ายเต็มกิน 92px จาก 351px ของแถว
+// ซึ่งเบียดชื่อหุ้น+ชื่อหมวดจนเหลือ 15px — ตัวหนังสือล้นไปทับกราฟจิ๋ว
+function badgeHtml(verdict, vc){
+  const full = verdictThai(verdict);
+  const m = String(full).match(/^(\S+)\s+([\s\S]+)$/);
+  const ic = m ? m[1] : full, tx = m ? m[2] : '';
+  return `<span class="lv-badge ${vc}" title="${escHtml(full)}">` +
+    `<i class="vb-ic">${escHtml(ic)}</i>` +
+    (tx ? `<span class="vb-tx">${escHtml(tx)}</span>` : '') + `</span>`;
+}
+
 function listRow(r){
   if(r.error) return `<div class="lrow" onclick="openStock('${r.ticker}')">
     <div class="lt"><b>${escHtml(r.ticker)}</b><span class="lsec">❌ ${escHtml(r.error)}</span></div>
@@ -3072,7 +3150,7 @@ function listRow(r){
     <div class="lpx"><b>${fmt(pv.price)}</b>
       <span class="lchg ${up?'up':'down'}">${up?'+':''}${pv.chg!=null?fmt(pv.chg):'-'}%</span>
       ${ohMini}</div>
-    <span class="lv-badge ${vc}">${verdictThai(r.verdict)}</span>
+    ${badgeHtml(r.verdict, vc)}
     <button class="ldel" title="ลบ" onclick="event.stopPropagation();removeTicker('${r.ticker}')">✕</button>
   </div>`;
 }
@@ -3586,7 +3664,9 @@ async function fetchQuotes(){
     (j.quotes || []).forEach(q => {
       const prev = liveQuotes[q.ticker];
       const oldPrice = prev ? prev.price : (results[q.ticker] ? results[q.ticker].price : null);
-      liveQuotes[q.ticker] = {price:q.price, chg:q.chg, ts:q.ts};   // แหล่งความจริงเดียว
+      // แหล่งความจริงเดียว — เก็บฟิลด์ทางการของ Yahoo มาด้วย (ราคาปิด session, % , ดีเลย์ตลาด)
+      liveQuotes[q.ticker] = {price:q.price, chg:q.chg, ts:q.ts,
+        reg_price:q.reg_price, reg_chg:q.reg_chg, state:q.state, delay:q.delay};
       // เวลาไทยของแท่งราคาสดล่าสุด (ts มากับ offset -04:00 นิวยอร์ก → แปลงเป็นเวลาไทย)
       if(q.ts){
         const d = new Date(String(q.ts).replace(' ', 'T'));
@@ -3600,7 +3680,7 @@ async function fetchQuotes(){
       // การ์ดยังวิเคราะห์ไม่เสร็จ/error → อย่าเพิ่งเขียนทับ กันพาดหัว "ไหล" เป็นราคานอกเวลา
       // แวบหนึ่งแล้วเด้งกลับตอนผลวิเคราะห์มาถึง
       if(!rr || rr.error) return;
-      const pv = priceView(rr, {price:q.price, chg:q.chg});
+      const pv = priceView(rr, liveQuotes[q.ticker]);
       const up = (pv.chg ?? 0) >= 0;
       const newHtml = fmt(pv.price) +
         `<span class="chg ${up?'up':'down'}">${up?'+':''}${pv.chg!=null?fmt(pv.chg):'-'}%</span>`;
@@ -3614,7 +3694,7 @@ async function fetchQuotes(){
       // อัปเดตบรรทัดราคานอกเวลาให้ขยับตามราคาสดด้วย (ถ้ามี)
       const ohEl = document.getElementById('oh-' + q.ticker);
       if(ohEl){
-        const newOh = ohLineHtml(rr, {price:q.price, chg:q.chg});
+        const newOh = ohLineHtml(rr, liveQuotes[q.ticker]);
         if(ohEl.innerHTML !== newOh) ohEl.innerHTML = newOh;
       }
     });
@@ -3671,11 +3751,12 @@ function usMarketState(){
   if(st.length) return 'CLOSED';
   return null;
 }
-// ตลาดคึก (เปิด/pre/post) → poll ถี่ 15 วิ ; นอกเวลา → 30 วิ (ยังตามราคาข้ามคืน/รอ pre เปิด)
-// หมายเหตุ: server แคชราคา 20 วิ อยู่แล้ว ยิงถี่กว่านั้นจะได้ค่าแคช ไม่ไปกวน Yahoo เพิ่ม
+// ตลาดคึก (เปิด/pre/post) → 3 วิ ; นอกเวลา → 10 วิ (ยังตามราคาข้ามคืน/รอ pre เปิด)
+// ยิงถี่ได้เพราะฝั่งเซิร์ฟเวอร์เปลี่ยนไปดึงแบบ batch (ทุกตัวในคำขอเดียว) + มีเธรดอุ่นแคช
+// ไว้ทุก 2.5 วิ → คำขอนี้อ่านจากแคชทันที ไม่ได้เพิ่มภาระให้ Yahoo ตามจำนวนครั้งที่ยิง
 function quotePollMs(){
   const ms = usMarketState();
-  return (ms==='REGULAR'||ms==='PRE'||ms==='POST') ? 15000 : 30000;
+  return (ms==='REGULAR'||ms==='PRE'||ms==='POST') ? 3000 : 10000;
 }
 let _quoteTimer = null;
 let _lastMktState = null;
@@ -3702,10 +3783,46 @@ async function scheduleQuotePoll(immediate){
 }
 
 // ตลาดโลกเดินต่อตลอดแม้ตลาดหุ้นปิด — ทอง/น้ำมันเทรดเกือบ 24 ชม. คริปโต 24 ชม.
-// จึง poll ถี่ 15 วิเสมอ (server แคช 20 วิ กันยิง Yahoo ถี่เกิน)
-setInterval(()=>loadMarket(true), 15000);
+// จึง poll ถี่ 5 วิเสมอ (แคชฝั่งเซิร์ฟเวอร์ 3 วิ + เธรดอุ่น กันยิง Yahoo ถี่เกิน)
+setInterval(()=>loadMarket(true), 5000);
 // กลับมาที่แท็บ → ดึงใหม่ทันที ไม่ต้องรอรอบถัดไป
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) loadMarket(); });
+
+// ===== หัวเว็บซ่อนตอนเลื่อนลง (เฉพาะมือถือ) =====
+// บนจอ 375x812 หัวเว็บกินไป 102px ค้างตลอด — ระหว่างไล่ดูรายการหุ้นไม่ได้ใช้
+// เลื่อนลงจึงพับเก็บ เลื่อนขึ้นค่อยคืนมา (ปัดขึ้นนิดเดียวก็ได้ช่องค้นหา/ปุ่มสแกนกลับมาแล้ว)
+const HDR_HIDE_AFTER = 220;   // px — เหนือกว่านี้ยังโชว์เสมอ กันหัวเว็บกระพริบตอนอยู่บนสุด
+const HDR_DELTA = 6;          // px — กันสั่นจากการเลื่อนจิ๊บจ๊อย
+
+// แยกการ "ตัดสินใจ" ออกจากการ "ผูก event" เพื่อให้ทดสอบได้ตรงๆ โดยไม่ต้องมีเบราว์เซอร์จริง
+// คืน true = ซ่อน · false = โชว์ · null = ยังไม่พอจะตัดสิน (ให้คงสถานะเดิม)
+function hdrHideDecision(y, lastY, busy){
+  if(busy) return false;                       // เมนู/แผงล็อกอินเปิดอยู่ → อย่าเพิ่งซ่อน
+  if(y <= HDR_HIDE_AFTER) return false;        // ใกล้บนสุด → โชว์เสมอ
+  if(Math.abs(y - lastY) < HDR_DELTA) return null;
+  return y > lastY;                            // ลง = ซ่อน · ขึ้น = โชว์
+}
+
+(function(){
+  let lastY = 0, ticking = false;
+  function upd(){
+    ticking = false;
+    if(!matchMedia('(max-width:640px)').matches){
+      document.body.classList.remove('hdr-hide'); return;
+    }
+    const ap = document.getElementById('authPanel');
+    const busy = document.body.classList.contains('menu-open')
+              || (ap && ap.style.display === 'flex');
+    const d = hdrHideDecision(window.scrollY, lastY, busy);
+    if(d !== null) document.body.classList.toggle('hdr-hide', d);
+    if(Math.abs(window.scrollY - lastY) >= HDR_DELTA) lastY = window.scrollY;
+  }
+  addEventListener('scroll', ()=>{
+    if(!ticking){ ticking = true; requestAnimationFrame(upd); }
+  }, {passive:true});
+  // หมุนจอ/ขยายหน้าต่างจนพ้นโหมดมือถือ → คืนหัวเว็บทันที ไม่ค้างซ่อน
+  addEventListener('resize', ()=>{ if(!ticking){ ticking = true; requestAnimationFrame(upd); } });
+})();
 
 // นำเข้าพอร์ตจากลิงก์: #import=<JSON encoded>
 // ใช้ย้ายพอร์ตข้ามเบราว์เซอร์/เครื่องได้ (ข้อมูลพอร์ตเก็บใน localStorage ซึ่งแยกตามเบราว์เซอร์)
