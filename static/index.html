@@ -535,6 +535,9 @@
   .mk-item{cursor:pointer;transition:border-color .2s ease,transform .2s var(--ease-spring)}
   .mk-item:hover{border-color:rgba(115,66,226,.4);transform:translateY(-2px)}
   .mk-item.on{border-color:var(--purple-hi);box-shadow:0 0 0 1px var(--purple-hi),var(--shadow-item)}
+  /* ⓘ บอกว่าช่องนี้ไม่ได้ใช้แหล่งข้อมูลหลัก (ตัวหลักโดนบล็อก เลยถอยไปใช้ตัวสำรอง)
+     ไม่ให้ตัวเลขที่มาจากคนละแหล่งดูเหมือนของแท้โดยไม่บอกใคร */
+  .mk-via{margin-left:4px;color:var(--purple-hi);font-weight:800;cursor:help}
   .mk-ta-hint{font-size:.62rem;color:var(--purple-hi);font-weight:700;margin-top:1px;opacity:.9}
   /* แผงวิเคราะห์เทคนิคของสินทรัพย์ตลาด (กดจากแถบด้านบน) */
   #mktTA{padding:0 22px}
@@ -2869,7 +2872,7 @@ async function loadMarket(poll){
           onclick="marketTA('${m.symbol}','${m.name}')">
         <span class="mk-ic">${m.icon}</span>
         <div class="mk-body">
-          <div class="mk-name">${m.name}</div>
+          <div class="mk-name">${m.name}${m.via?'<span class="mk-via" title="'+escHtml(m.via)+'">ⓘ</span>':''}</div>
           <div class="mk-px price" id="mk-${m.symbol}">${fmt(m.price, m.price >= 1000 ? 0 : 2)}<span class="mk-chg ${up?'up':'down'}">${up?'+':''}${m.chg!=null?fmt(m.chg):'-'}%</span></div>
           <div class="mk-ta-hint">📊 กดดูเทคนิค</div>
         </div>

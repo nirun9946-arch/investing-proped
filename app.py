@@ -319,39 +319,83 @@ def api_quotes():
 
 # แถบตลาดโลก — สัญลักษณ์ที่ตรวจแล้วว่า Yahoo มีข้อมูลจริง
 # (XAUUSD=X และ DX=F ใช้ไม่ได้ ถูกตัดออก)
+#
+# ช่องที่ 5 = สัญลักษณ์สำรอง ใช้เมื่อตัวหลักดึงไม่ได้
+# ทำไมต้องมี: Yahoo ไม่ส่งดัชนีที่มีลิขสิทธิ์ (^GSPC, ^NDX) ให้ IP ของศูนย์ข้อมูล
+# ตรวจจากเซิร์ฟเวอร์จริงบน Render 3 ก.ย. 69 — ^GSPC/^NDX ไม่มา แต่ ^DJI ^IXIC ^VIX
+# ^TNX SPY QQQ มาปกติ ผลคือแถบดัชนีขึ้นแค่ 6 จาก 8 ช่อง (เพื่อนผู้ใช้เป็นคนทัก)
+#   • ^SPX = ดัชนี S&P 500 ตัวเดียวกับ ^GSPC เป๊ะ (ทดสอบแล้วได้ 7666.6 +0.46% เท่ากัน)
+#     แค่เป็นชื่อเรียกอีกแบบที่ Yahoo ยอมส่งให้ → สลับมาใช้ได้โดยเลขไม่เปลี่ยน
+#   • Nasdaq 100 ไม่มีชื่อเรียกสำรองที่ใช้ได้ (NDX เฉยๆ เป็นคนละตัว, ^NDXT เป็นดัชนีย่อย)
+#     จึงถอยไปใช้ QQQ ซึ่งเป็นกองทุนที่อ้างอิงดัชนีนี้ — % ตรงกันแทบสนิท (0.226 vs 0.227)
+#     แต่ "ระดับราคา" คนละสเกล (709 vs 29,143) จึงต้องเปลี่ยนชื่อช่องให้ตรงตามของจริง
 MARKET_SYMBOLS = [
     ("GC=F", "ทองคำ", "🥇", "USD/ounce"),
     ("CL=F", "น้ำมัน WTI", "🛢", "USD/barrel"),
     ("BTC-USD", "บิตคอยน์", "₿", "USD"),
     ("THB=X", "ดอลลาร์/บาท", "💵", "บาทต่อ 1 ดอลลาร์"),
     # ดัชนีหลักและตัววัดความเสี่ยงของตลาด
-    ("^GSPC", "S&P 500", "🇺🇸", "ดัชนีหุ้นใหญ่ 500 ตัวของสหรัฐ"),
-    ("^NDX", "Nasdaq 100", "💻", "ดัชนีหุ้นเทค 100 ตัว"),
+    ("^GSPC", "S&P 500", "🇺🇸", "ดัชนีหุ้นใหญ่ 500 ตัวของสหรัฐ",
+     [("^SPX", None, None)]),
+    ("^NDX", "Nasdaq 100", "💻", "ดัชนีหุ้นเทค 100 ตัว",
+     [("QQQ", "Nasdaq 100 · QQQ", "ราคากองทุน QQQ ที่อ้างอิงดัชนี Nasdaq 100 "
+                                  "(% ขึ้นลงตรงกับดัชนี แต่ระดับราคาคนละสเกล)")]),
     ("^TNX", "พันธบัตร 10 ปี", "🏦", "% ผลตอบแทน — ขึ้นมากมักกดดันหุ้นเติบโต"),
     ("^VIX", "VIX ความกลัว", "😨", "ยิ่งสูงยิ่งกลัว: <20 ปกติ · >30 ตลาดตื่นตระหนก"),
 ]
 
 
+def _market_plan():
+    """คลี่ MARKET_SYMBOLS เป็น (สัญลักษณ์หลัก, ชื่อ, ไอคอน, หน่วย, [ตัวสำรอง])"""
+    for row in MARKET_SYMBOLS:
+        sym, name, icon, unit = row[0], row[1], row[2], row[3]
+        alts = row[4] if len(row) > 4 else []
+        yield sym, name, icon, unit, alts
+
+
 @app.route("/api/market")
 def api_market():
-    """ราคาเรียลไทม์ตลาดโลก: ทองคำ / น้ำมัน / บิตคอยน์ / ดัชนีดอลลาร์"""
+    """ราคาเรียลไทม์ตลาดโลก: ทองคำ / น้ำมัน / บิตคอยน์ / ดัชนี / VIX"""
     try:
-        syms = [s[0] for s in MARKET_SYMBOLS]
+        plan = list(_market_plan())
+        # ขอทั้งตัวหลักและตัวสำรองไปในคำขอเดียว จะได้ไม่ต้องยิงรอบสองเวลาตัวหลักหาย
+        syms = []
+        for sym, _n, _i, _u, alts in plan:
+            syms.append(sym)
+            syms.extend(a[0] for a in alts)
         _mark_hot(syms)
         quotes = {q["ticker"]: q for q in core.live_quotes(syms)}
+
         out = []
-        for sym, name, icon, unit in MARKET_SYMBOLS:
-            q = quotes.get(sym)
+        for sym, name, icon, unit, alts in plan:
+            q, used, via = quotes.get(sym), sym, None
+            for alt_sym, alt_name, alt_note in alts:
+                if q:
+                    break
+                q = quotes.get(alt_sym)
+                if q:
+                    used = alt_sym
+                    if alt_name:
+                        name = alt_name
+                    if alt_note:
+                        unit, via = alt_note, alt_note
             if not q:
                 continue
-            out.append({"symbol": sym, "name": name, "icon": icon, "unit": unit,
-                        "price": q["price"], "chg": q.get("chg"), "ts": q.get("ts")})
+            out.append({"symbol": used, "name": name, "icon": icon, "unit": unit,
+                        "price": q["price"], "chg": q.get("chg"), "ts": q.get("ts"),
+                        "delay": q.get("delay"),
+                        # via มีค่าเมื่อช่องนี้ไม่ได้ใช้แหล่งหลัก — ฝั่งเว็บเอาไปบอกผู้ใช้
+                        "via": via})
         return jsonify({"items": out})
     except Exception as e:
         return jsonify({"error": str(e), "items": []}), 500
 
 
-_MARKET_META = {s[0]: (s[1], s[2], s[3]) for s in MARKET_SYMBOLS}
+_MARKET_META = {}
+for _sym, _name, _icon, _unit, _alts in _market_plan():
+    _MARKET_META[_sym] = (_name, _icon, _unit)
+    for _a_sym, _a_name, _a_note in _alts:
+        _MARKET_META[_a_sym] = (_a_name or _name, _icon, _a_note or _unit)
 
 
 @app.route("/api/market-ta/<path:symbol>")
