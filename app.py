@@ -198,7 +198,17 @@ def write_config(cfg):
 
 @app.route("/")
 def index():
-    return send_from_directory(app.static_folder, "index.html")
+    """หน้าเว็บหลัก
+
+    ตั้ง no-cache เพราะเว็บทั้งเว็บอยู่ในไฟล์นี้ไฟล์เดียว (ทั้ง HTML/CSS/JS)
+    เบราว์เซอร์ที่เก็บไว้จะไม่เห็นของใหม่จนกว่าจะกดรีเฟรชแบบล้างแคช —
+    เจอจริง 3 ก.ย. 69: อัปแก้แถบดัชนีขึ้นไปแล้ว แต่หน้าที่เปิดอยู่ยังเป็นของเก่า
+    no-cache ไม่ได้แปลว่าโหลดใหม่ทุกครั้ง แต่คือ "ถามเซิร์ฟเวอร์ก่อนเสมอ"
+    ถ้าไฟล์ไม่เปลี่ยน ETag จะตอบ 304 ไม่ต้องโหลดซ้ำอยู่ดี
+    """
+    resp = send_from_directory(app.static_folder, "index.html")
+    resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return resp
 
 
 def _tickers_param():
