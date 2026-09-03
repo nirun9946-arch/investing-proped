@@ -566,42 +566,6 @@ _prev_cache = {}
 _PREV_TTL = 600
 
 
-def _futures_prev_close(tk):
-    """ราคาปิดเซสชันล่าสุดของฟิวเจอร์ส คำนวณจากแท่งราย 1 ชม. ที่ 16:00 ET
-
-    บั๊ก (เจอ 3 ก.ย. 2569): ฟิวเจอร์สเทรดเกือบ 24 ชม. ทำให้แท่ง "รายวัน" ของ Yahoo
-    สำหรับ GC=F/SI=F/CL=F เชื่อไม่ได้เลย — Volume ต่ำผิดปกติ (ทองได้ 191-1,202 สัญญา
-    ทั้งที่ของจริงหลักแสน) และราคาปิดไม่ตรงกับการปิดเซสชันจริง ทั้งยังปนเซสชัน
-    กลางคืนของ "วันถัดไป" เข้ามาด้วย เช่นแท่งวันที่ 2 ก.ย. 2569 ปิดที่ 4,472.3
-    ซึ่งคือราคาตอน 23:00 ET = เซสชันที่จะ settle วันที่ 3 ไม่ใช่ราคาปิดของวันที่ 2
-
-    ผลต่อเนื่อง: prev_close() เห็นแท่งสุดท้ายลงวันที่ตรงกับ "วันนี้" จึงถอยไปหยิบ
-    แท่งวันที่ 1 ก.ย. (4,348.0) มาเป็นฐาน แล้วเอาราคาสดของเซสชันวันที่ 3 มาเทียบ
-    = คร่อม 2 เซสชันรวด รายงานว่าทองขึ้น +2.94% และเงิน +2.97% ทั้งที่เทียบ
-    ราคาปิด RTH จริง (ทอง 4,434.3) ขึ้นแค่ +0.94% — ขนาดผิดไปเกิน 3 เท่า
-
-    → เลี่ยงแท่งรายวันทั้งหมด ใช้แท่งราย 1 ชม. ที่ 16:00 ET (ปิด RTH ของ COMEX/NYMEX)
-    เป็นฐานแทน ซึ่งเป็นตัวเลขเดียวกับที่สำนักข่าวรายงานเป็น "ราคาปิด"
-    """
-    try:
-        h = tk.history(period="1mo", interval="1h", auto_adjust=False)
-        if h is None or h.empty or "Close" not in h:
-            return None
-        h = h.dropna(subset=["Close"])
-        if "Volume" in h:
-            h = h[h["Volume"] > 0]          # ตัดแท่งกลวงช่วงตลาดพัก
-        rth = h[h.index.hour == 16]          # แท่ง 16:00 ET = ปิดเซสชันปกติ
-        if rth.empty:
-            return None
-        now_ts = pd.Timestamp.now(tz=getattr(rth.index, "tz", None))
-        past = rth[rth.index < now_ts]       # ต้องเป็นเซสชันที่จบไปแล้วเท่านั้น
-        if past.empty:
-            return None
-        return float(past["Close"].iloc[-1])
-    except Exception:
-        return None
-
-
 def prev_close(ticker, tk=None):
     """ราคาปิดล่าสุดที่ 'จบวันแล้ว' — ฐานที่ถูกต้องสำหรับคำนวณ % เปลี่ยนแปลง
 
@@ -615,13 +579,6 @@ def prev_close(ticker, tk=None):
         return c[1]
     try:
         tk = tk or yf.Ticker(ticker)
-        # ฟิวเจอร์ส (=F) เทรดเกือบ 24 ชม. → แท่งรายวันของ Yahoo ใช้ไม่ได้ ดู _futures_prev_close()
-        if str(ticker).endswith("=F"):
-            fp = _futures_prev_close(tk)
-            if fp is not None:
-                _prev_cache[ticker] = (now, fp)
-                return fp
-            # กู้ไม่ได้ก็ตกไปใช้ทางเดิม ดีกว่าไม่มีค่าเลย แต่ % อาจคร่อมเซสชัน
         # auto_adjust=False = ราคากระดานจริง — ถ้าใช้ราคาปรับปันผล ตัวที่จ่ายปันผลถี่
         # (เช่น covered-call ETF) จะได้ฐาน % ผิดในวัน ex-dividend
         h = tk.history(period="5d", interval="1d", auto_adjust=False)
@@ -1160,9 +1117,9 @@ def make_advice(r):
     if pred:
         pct = pred["prob_up"] * 100
         if pct >= 58:
-            reasons.append(f"สถิติย้อนหลัง: สภาวะแบบวันนี้เคยเกิด {pred['n']} ครั้ง — ครั้งที่ราคาสูงขึ้นใน 5 วันถัดมามี {pct:.0f}% (อัตราชนะ ไม่ใช่ขนาดการขึ้น)")
+            reasons.append(f"สถิติย้อนหลัง: สภาวะแบบวันนี้เคยเกิด {pred['n']} ครั้ง — 5 วันถัดมาราคาขึ้น {pct:.0f}% ของครั้งทั้งหมด")
         elif pct <= 42:
-            reasons.append(f"สถิติย้อนหลัง: สภาวะแบบวันนี้เคยเกิด {pred['n']} ครั้ง — ครั้งที่ราคาต่ำลงใน 5 วันถัดมามี {100-pct:.0f}% (อัตราแพ้ ไม่ใช่ขนาดการลง)")
+            reasons.append(f"สถิติย้อนหลัง: สภาวะแบบวันนี้เคยเกิด {pred['n']} ครั้ง — 5 วันถัดมาราคาลง {100-pct:.0f}% ของครั้งทั้งหมด")
 
     vp = r.get("vp")
     sup = r.get("support")
