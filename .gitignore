@@ -5,3 +5,4 @@ users.json
 reports/
 tunnel.log
 cloudflared.exe
+*.bak
