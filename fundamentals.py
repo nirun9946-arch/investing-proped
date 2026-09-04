@@ -571,10 +571,21 @@ def _info_fallback(ticker):
         out["dividendYield"] = _num(r.get("dividendYield"))
         out["dividendRate"] = _num(r.get("dividendRate")) or _num(r.get("trailingAnnualDividendRate"))
 
-    if not out.get("marketCap") and not out.get("regularMarketPrice"):
-        return out          # ฟีดราคาก็ไม่มา — ไม่ต้องเสียเวลาโหลดงบ
-
     tk = yf.Ticker(ticker)
+
+    # ฟีดราคาไม่มาด้วย (บน Render โดนปิดเป็นช่วงๆ ทั้งฟีด) → เอาราคาจากกราฟแทน
+    # กราฟ (history) เป็นแหล่งเดียวที่ยังไม่เคยโดนบล็อกเลย จึงใช้เป็นพื้นสุดท้าย
+    if not out.get("regularMarketPrice"):
+        try:
+            h = tk.history(period="5d")
+            if h is not None and not h.empty:
+                out["regularMarketPrice"] = float(h["Close"].iloc[-1])
+                if len(h) > 1:
+                    out["previousClose"] = float(h["Close"].iloc[-2])
+        except Exception:
+            pass
+    if not out.get("regularMarketPrice"):
+        return out          # ไม่มีแม้แต่ราคา — ทำอะไรต่อไม่ได้
 
     def grab(name, fallback=None):
         for attr in (name, fallback):
@@ -644,6 +655,21 @@ def _info_fallback(ticker):
     div_paid = _ttm(div_row) or _latest(div_row)
     if div_paid is not None and ni_t:
         out.setdefault("payoutRatio", abs(div_paid) / ni_t)
+
+    # ค่าที่ปกติได้จากฟีดราคา — คำนวณเองจาก "จำนวนหุ้น x ราคา" เมื่อฟีดไม่มา
+    px = out.get("regularMarketPrice")
+    shares = _latest(_row(bal, ["Ordinary Shares Number", "Share Issued",
+                                "Common Stock Shares Outstanding"]))
+    if px and shares:
+        out.setdefault("marketCap", px * shares)
+        if eq:
+            out.setdefault("priceToBook", px / (eq / shares))
+        # ใช้ EPS ปรับลด (diluted) ที่งบรายงานไว้ก่อน เพราะเป็นตัวเดียวกับที่ Yahoo ใช้คิด P/E
+        # ถ้าไม่มีบรรทัดนี้ค่อยหารเอง (กำไรสุทธิ ÷ จำนวนหุ้น) ซึ่งจะไม่นับหุ้นปรับลด
+        eps_row = _row(inc, ["Diluted EPS", "Basic EPS"])
+        eps_ttm = _ttm(eps_row) or _div(ni_t, shares)
+        if eps_ttm and eps_ttm > 0:
+            out.setdefault("trailingPE", px / eps_ttm)
 
     return {k: v for k, v in out.items() if v is not None}
 

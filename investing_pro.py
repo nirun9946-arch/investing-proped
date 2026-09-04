@@ -776,6 +776,14 @@ QUOTE_TTL = 4.0     # วิ — แคชสั้นได้เพราะ b
 # marketState รายตัว และ exchangeDataDelayedBy (ดีเลย์จริงของแต่ละตลาด)
 _BATCH_URL = "https://query2.finance.yahoo.com/v7/finance/quote"
 
+# ฟีด batch ถูกปิดเป็นช่วงๆ บนเซิร์ฟเวอร์ (ตรวจบน Render: บางช่วงได้ครบ บางช่วงไม่ได้เลยสักตัว)
+# เมื่อพลาดติดกันหลายครั้ง ให้พักไปใช้ทางสำรองรายตัวสักพัก แล้วค่อยกลับมาลองใหม่
+# ไม่ใช่แค่กันเสียเวลาเปล่า — การยิงรัวใส่ปลายทางที่กำลังปฏิเสธเราอยู่ มีแต่จะโดนกันหนักขึ้น
+_batch_fail = 0
+_batch_pause_until = 0.0
+_BATCH_FAIL_MAX = 3
+_BATCH_PAUSE = 120.0
+
 
 def _fmt_ts(epoch, tzname):
     """epoch → 'YYYY-MM-DD HH:MM:SS+07:00' ตามโซนของตลาดนั้น
@@ -885,11 +893,20 @@ def live_quotes(tickers, max_age=None):
     need = [t for t in tickers if t not in _quote_cache or now - _quote_cache[t][0] > ttl]
 
     if need:
+        global _batch_fail, _batch_pause_until
         got = {}
-        try:
-            got = _batch_quotes(need)
-        except Exception:
-            got = {}
+        if now >= _batch_pause_until:
+            try:
+                got = _batch_quotes(need)
+            except Exception:
+                got = {}
+            if got:
+                _batch_fail = 0
+            else:
+                _batch_fail += 1
+                if _batch_fail >= _BATCH_FAIL_MAX:
+                    _batch_pause_until = now + _BATCH_PAUSE
+                    _batch_fail = 0
         for t, q in got.items():
             _quote_cache[t] = (now, q)
 
