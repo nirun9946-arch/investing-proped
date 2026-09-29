@@ -60,7 +60,13 @@ def parse_portfolio(path=PORTFOLIO_MD):
         priced = m.group(1).strip()
 
     cash = None
-    m = re.search(r"Total Cash \(USD\)\s*\|\s*" + _NUM, text)
+    # บั๊ก (เจอ 16 ก.ย. 2569): regex เดิมไม่เผื่อ markdown ตัวหนา — ในไฟล์จริงบรรทัดคือ
+    #   | **Total Cash (USD)** | **$3,024.43** | ...
+    # มี ** คั่นทั้งหลัง "(USD)" และหน้าตัวเลข regex จึงไม่แมตช์ แล้ว `cash or 0.0`
+    # กลืนความล้มเหลวเงียบ ๆ → รายงานเงินสด $0 ทั้งที่จริงมี $3,024.43
+    # ผลคือมูลค่าบัญชีรวมต่ำไป 3,024 และ % ขาดทุนดูแย่กว่าความจริง
+    # (บรรทัด Total Account Value ข้างล่างเผื่อ \*?\*? ไว้อยู่แล้ว ตัวนี้ตกหล่น)
+    m = re.search(r"Total Cash \(USD\)\*?\*?\s*\|\s*\*?\*?" + _NUM, text)
     if m:
         cash = _f(m.group(1))
 

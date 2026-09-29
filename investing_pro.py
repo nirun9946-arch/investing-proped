@@ -462,7 +462,10 @@ def volume_pace(tk, df, market_state):
 def support_resistance(df, lookback=60, window=5):
     """หาแนวรับ/แนวต้านจาก swing highs/lows ล่าสุด
 
-    คืน (support, resistance, sup_basis, res_basis) — สอง basis บอกว่าระดับนั้นมาจากไหน
+    คืน (support, resistance, sup_basis, res_basis, recent) — สอง basis บอกว่าระดับนั้นมาจากไหน
+    ส่วน recent เป็น dict: recent_high / recent_low (จุดสูง-ต่ำของ `window` แท่งท้ายที่ยัง
+    ยืนยัน swing ไม่ได้) และ resistance_breached / support_breached (ระดับที่คืนไปถูกเทรด
+    ผ่านมาแล้วหรือยัง — ถ้า True อย่ารายงานว่าเป็นด่านที่ราคายังไม่เคยแตะ)
     "swing" = จุดกลับตัวจริงในกรอบ 60 แท่ง · "w52" = ถอยไปใช้จุดสูง/ต่ำสุด 52 สัปดาห์
     · None = ไม่มีจริง ๆ (ราคาทำจุดสูงสุด/ต่ำสุดของข้อมูลทั้งชุด)
 
@@ -486,6 +489,29 @@ def support_resistance(df, lookback=60, window=5):
     res_basis = "swing" if resistance is not None else None
     sup_basis = "swing" if support is not None else None
 
+    # บั๊กที่เจอ 6 ก.ย. 2569 (รายงานเย็น): ลูปหา swing ข้าม `window` แท่งท้ายสุดเสมอ
+    # (ถูกต้องแล้ว เพราะ swing ต้องมีแท่งยืนยันทั้งสองข้าง) แต่ผลข้างเคียงคือระดับที่
+    # "ถูกทะลุไปแล้วระหว่างวัน" ในแท่งท้าย ๆ ยังถูกรายงานเหมือนยังไม่เคยถูกทดสอบ
+    # ตัวอย่างจริง: NVDA ศุกร์ 4 ก.ย. 69 ขึ้นไปทำ High 234.76 แล้วถูกตีกลับ ปิด 230.36
+    # ระบบคืน resistance = 230.47 (เหนือราคาปิดแค่ 0.05%) ทั้งที่ราคาขึ้นไปเหนือระดับนั้น
+    # แล้ว 1.9% ระหว่างวัน — ด่านจริงที่มีคนขายคือ 234.76 ไม่ใช่ 230.47
+    # LITE ก็เจอแบบเดียวกัน: resistance 897.00 ทั้งที่ 31 ส.ค. ขึ้นไปแตะ 918.84 มาแล้ว
+    #
+    # แก้แบบไม่แตะ semantics เดิม (เคยลองบังคับให้แนวต้าน/แนวรับต้องพ้นกรอบแท่งท้าย
+    # แล้วพบว่าฝั่งแนวรับแย่ลงชัดเจน — MU แนวรับกระโดดจาก 990.95 ไป 891.66 ซึ่งไกล
+    # เกินใช้งาน จึงถอยกลับ) วิธีที่ใช้คือ "เพิ่มข้อมูล ไม่เปลี่ยนของเดิม":
+    # คืนจุดสูง/ต่ำของ `window` แท่งท้ายออกมาด้วย พร้อมธง breached ที่บอกว่าระดับที่
+    # คืนไปนั้นถูกเทรดผ่านมาแล้วหรือยัง ผู้เรียกจะได้ไม่ตีความว่าเป็นด่านที่ยังไม่ถูกแตะ
+    tail = df.tail(window)
+    recent_high = float(tail["High"].max()) if len(tail) else None
+    recent_low = float(tail["Low"].min()) if len(tail) else None
+    res_breached = (
+        resistance is not None and recent_high is not None and recent_high > resistance
+    )
+    sup_breached = (
+        support is not None and recent_low is not None and recent_low < support
+    )
+
     if resistance is None:
         hi = float(df["High"].tail(252).max())
         if hi > price:
@@ -494,12 +520,567 @@ def support_resistance(df, lookback=60, window=5):
         lo = float(df["Low"].tail(252).min())
         if lo < price:
             support, sup_basis = lo, "w52"
-    return support, resistance, sup_basis, res_basis
+    return (
+        support,
+        resistance,
+        sup_basis,
+        res_basis,
+        {
+            "recent_high": recent_high,
+            "recent_low": recent_low,
+            "resistance_breached": res_breached,
+            "support_breached": sup_breached,
+            "window": window,
+        },
+    )
 
 
 # ----------------------------------------------------------------------
 # Data
 # ----------------------------------------------------------------------
+def _is_stub_bar(df):
+    """แท่งรายวันล่าสุดเป็น "ซาก" หรือไม่ (เจอ 5 ก.ย. 2569 กับ GC=F)
+
+    ลักษณะ: Open=High=Low=Close (ไม่มีช่วงราคาเลย) และ Volume น้อยผิดปกติ
+    เทียบกับค่ากลาง 20 วันก่อนหน้า — แปลว่า Yahoo ยังไม่ได้ลงราคาจริงของวันนั้น
+    ไม่ใช่วันที่ตลาดนิ่งจริง (วันที่นิ่งจริงก็ยังมี High/Low ต่างกันและ Volume ปกติ)
+
+    ต้องเข้าเงื่อนไข "ทั้งสองอย่าง" เพื่อกันการกู้แท่งที่ถูกต้องอยู่แล้วโดยไม่จำเป็น
+    """
+    try:
+        if df is None or len(df) < 6:
+            return False
+        r = df.iloc[-1]
+        if not (r["Open"] == r["High"] == r["Low"] == r["Close"]):
+            return False
+        if "Volume" not in df:
+            return True  # ไม่มี Volume ให้เทียบ แต่แท่งแบนสนิท = น่าสงสัยพอแล้ว
+        v = float(r["Volume"])
+        med = float(df["Volume"].iloc[-21:-1].median())
+        if med <= 0:
+            return False  # เช่น ^VIX ที่ Volume เป็น 0 ตลอด — ห้ามตัดสินว่าเป็นซาก
+        return v < med * 0.25
+    except Exception:
+        return False
+
+
+def _is_futures(sym):
+    """ฟิวเจอร์สของ Yahoo ลงท้ายด้วย =F (GC=F, CL=F, ES=F, NQ=F ...)"""
+    return str(sym or "").upper().endswith("=F")
+
+
+def _cme_weekend_closed(now=None):
+    """True ถ้าอยู่ในช่วงปิดสุดสัปดาห์ของ CME Globex (ศุกร์ 17:00 ET – อาทิตย์ 18:00 ET)"""
+    now = now or pd.Timestamp.now(tz="America/New_York")
+    wd, hr = now.weekday(), now.hour
+    return wd == 5 or (wd == 4 and hr >= 17) or (wd == 6 and hr < 18)
+
+
+def _futures_daily_from_hourly(tk, df, lookback=55):
+    """สร้างแท่ง "รายวัน" ของฟิวเจอร์สใหม่จากแท่งราย 1 ชม. โดยตัดวันที่ 16:00 ET
+
+    บั๊ก (เจอ 12 ก.ย. 2569 รอบรายงานเช้า): แท่งรายวันของ GC=F ที่ Yahoo ส่งมา
+    "เชื่อไม่ได้ทั้งชุด" ไม่ใช่เสียเป็นแท่ง ๆ อย่างที่เข้าใจกันมาก่อนหน้านี้ —
+    ค่ากลาง Volume ของ 20 วันล่าสุดอยู่แค่ 419 สัญญา ขณะที่วันที่ข้อมูลมาครบจริง
+    (11 ก.ย.) มีถึง 185,690 สัญญา แปลว่าแทบทุกแท่งเป็นแท่งบาง ไม่ใช่ข้อยกเว้น
+
+    ที่หนักกว่านั้นคือ "ราคาปิด" ของแท่งรายวันเหล่านั้นไม่ตรงกับเวลาใดเลยที่อธิบายได้
+    เทียบกับแท่งราย 1 ชม. ของวันเดียวกัน (ตัวอย่างจริง 24 ส.ค. 2569):
+        แท่งรายวันของ Yahoo ปิด 4,640.80
+        แท่ง 16:00 ET (ปิด RTH)   4,710.00
+        แท่งสุดท้ายของวัน (~17:00) 4,688.30
+    สามค่าคนละค่า → ใช้แท่งรายวันเป็นฐาน % ไม่ได้เลย
+
+    ผลที่เจอจริงเช้านี้: /api/market-ta/GC=F รายงานทองวันศุกร์ +1.04% ขณะที่
+    /api/market รายงาน -0.39% ต่างกัน 1.4 จุดเปอร์เซ็นต์ทั้งที่ระดับราคาตรงกัน (4,390)
+    เพราะ `_repair_thin_volume_bars()` กู้แท่งบางโดยใช้ "แท่งสุดท้ายของวัน" (~17:00+)
+    เป็นราคาปิด ซึ่งคนละมาตรฐานกับแท่งรายวันที่ไม่ถูกกู้ (ตัดที่ 16:00) พอเอามาหารกัน
+    จึงคร่อมมาตรฐาน — 10 ก.ย. ถูกกู้เป็น 4,345.00 (17:00) แต่ 11 ก.ย. ใช้ 4,390.00 (16:00)
+
+    วิธีแก้: สำหรับ =F ให้เลิกเชื่อแท่งรายวันของ Yahoo แล้วประกอบขึ้นใหม่เองทั้งชุด
+    จากแท่งราย 1 ชม. โดยตัดที่แท่ง 16:00 ET (ปิด RTH ของ COMEX/NYMEX) ซึ่งเป็น
+    มาตรฐานเดียวกับที่ `_futures_prev_close()` ใช้อยู่แล้ว และเป็นตัวเลขที่สำนักข่าว
+    รายงานเป็น "ราคาปิด" → ทุกแท่งมาจากมาตรฐานเดียวกัน ฐาน % จึงไม่คร่อมอีก
+
+    ขอบเขต: ข้อมูลราย 1 ชม. ของ Yahoo ย้อนได้ ~60 วัน แท่งที่เก่ากว่านั้นยังเป็นของเดิม
+    (มีรอยต่อ แต่กระทบแค่ EMA ยาว ๆ ไม่กระทบฐาน % ของเซสชันล่าสุดซึ่งเป็นตัวที่ใช้จริง)
+
+    การ์ดกันกู้ผิด:
+      - ทำเฉพาะ =F เท่านั้น หุ้น/ดัชนี/ETF ไม่แตะ (ของพวกนั้นแท่งรายวันถูกต้องอยู่แล้ว)
+      - ต้องมีแท่งราย 1 ชม. ของวันนั้น >= 4 แท่ง และต้องมีแท่งที่ <= 16:00 จึงยอมเขียนทับ
+      - ถ้าดึงราย 1 ชม. ไม่ได้ ให้คืนของเดิม ห้ามทำให้การ์ดทั้งใบพัง
+    """
+    try:
+        if df is None or df.empty or len(df) < 2:
+            return df
+        # --- ประตูกัน "ซ่อมทั้งที่ไม่พัง" (เพิ่ม 12 ก.ย. 2569 หลังเจอว่าเผลอแก้ CL=F ด้วย) ---
+        # ไม่ใช่ฟิวเจอร์สทุกตัวที่แท่งรายวันเสีย — CL=F ของ Yahoo ปกติดี (ค่ากลาง Volume
+        # 259,235) และราคาปิดของมันคือ "settlement" ซึ่งตรงกับที่สำนักข่าวรายงาน
+        # ถ้าไปประกอบใหม่ด้วยแท่ง 16:00 จะกลายเป็นทำให้ผิด: น้ำมันวันศุกร์ 11 ก.ย.
+        # ของจริง -2.43% (ฐาน 102.48) แต่แบบ 16:00 ได้ -3.79% (ฐาน 103.93)
+        #
+        # ตัวชี้ว่าชุดข้อมูล "พังทั้งชุด" คือค่ากลาง Volume ต่ำจนไม่สมจริงเมื่อเทียบกับ
+        # วันที่ข้อมูลมาครบ — GC=F: สูงสุด 185,690 / ค่ากลาง 419 = 443 เท่า (พัง)
+        #                    CL=F: สูงสุด ~500K / ค่ากลาง 259K ≈ 2 เท่า (ปกติ)
+        # ใช้เกณฑ์ 10 เท่าเป็นเส้นแบ่ง ซึ่งห่างจากทั้งสองฝั่งมากพอที่จะไม่ไหวตามข้อมูล
+        if "Volume" in df:
+            v = df["Volume"].tail(60).dropna()
+            v = v[v > 0]
+            med = float(v.median()) if len(v) else 0.0
+            mx = float(v.max()) if len(v) else 0.0
+            if med <= 0 or mx / med < 10:
+                return df          # แท่งรายวันของตัวนี้ใช้ได้ อย่าไปยุ่ง
+        h = tk.history(period="60d", interval="1h", prepost=False)
+        if h is None or h.empty or "Close" not in h:
+            return df
+        h = h.dropna(subset=["Close"])
+        if "Volume" in h:
+            h = h[h["Volume"] > 0]          # ตัดแท่งกลวงช่วงตลาดพัก
+        if h.empty:
+            return df
+        # เก็บเฉพาะแท่งตั้งแต่เปิดวันจนถึงแท่ง 16:00 ET = ปิด RTH
+        h = h[h.index.hour <= 16]
+        if h.empty:
+            return df
+
+        by_date = {}
+        for ts, row in h.iterrows():
+            by_date.setdefault(ts.date(), []).append((ts, row))
+
+        cols = df.columns.get_indexer(["Open", "High", "Low", "Close"])
+        n = len(df)
+        for i in range(max(0, n - lookback), n):
+            rows = by_date.get(df.index[i].date())
+            if not rows or len(rows) < 4:
+                continue
+            # ต้องมีแท่ง 16:00 จริง ๆ ไม่งั้นวันนั้นข้อมูลไม่ครบ อย่าเขียนทับ
+            if rows[-1][0].hour != 16:
+                continue
+            df.iloc[i, cols] = [
+                float(rows[0][1]["Open"]),
+                float(max(r[1]["High"] for r in rows)),
+                float(min(r[1]["Low"] for r in rows)),
+                float(rows[-1][1]["Close"]),
+            ]
+    except Exception:
+        # กู้ไม่สำเร็จก็ใช้ข้อมูลเดิม — ห้ามให้การ์ดทั้งใบพังเพราะการกู้ล้ม
+        pass
+    return df
+
+
+def _repair_thin_volume_bars(tk, df, lookback=30):
+    """กู้แท่งรายวัน "วอลุ่มบาง" ย้อนหลังหลายแท่ง จากข้อมูลราย 1 ชั่วโมง
+
+    (เจอ 7 ก.ย. 2569 กับ GC=F — ต่อยอดจากบั๊ก stub-bar ที่แก้ไป 5 ก.ย. 2569)
+
+    ปัญหา: `_patch_unsettled_last_bar()` กู้ได้ "แท่งสุดท้ายแท่งเดียว" และดักเฉพาะ
+    แท่งที่แบนสนิท (Open=High=Low=Close) เท่านั้น แต่ของจริงฟิวเจอร์สที่สัญญากำลัง
+    โรลออก Yahoo ส่งแท่งวอลุ่มบางมา "ติดกันหลายวัน" และไม่แบนด้วย เช่น GC=F:
+        2026-09-02 Close 4366.30 Volume 72   (จริง 4477.10)
+        2026-09-03 Close 4491.70 Volume 16   (จริง 4513.80)
+        2026-09-04 Close 4429.80 Volume 16   (จริง 4476.60)
+    แท่ง 3 ก.ย. ไม่แบนจึงรอด `_is_stub_bar()` ผลคือ "ระดับราคา" ถูกกู้แต่ "ฐาน %"
+    ยังผิด — รายงานทองว่า -0.34% ขณะที่ของจริง -0.82%
+
+    วิธีแก้: ไล่ตรวจ `lookback` แท่งท้าย ถ้าแท่งไหน Volume < 25% ของค่ากลาง 20 แท่ง
+    ก่อนหน้า ให้สร้าง OHLC ของวันนั้นใหม่จากข้อมูลราย 1 ชั่วโมง (ย้อนหลังได้ ~60 วัน
+    มากกว่าราย 1 นาทีที่ได้แค่ ~5 วัน จึงกู้ได้ทั้งชุดไม่ใช่แค่แท่งเดียว)
+
+    การ์ดกันกู้ผิด:
+      - ดึงข้อมูลราย 1 ชั่วโมงต่อเมื่อมีแท่งเข้าข่ายจริง (ไม่เพิ่มโหลดกับหุ้นปกติ)
+      - ค่ากลาง <= 0 ข้ามทันที (^VIX / ^TNX มี Volume = 0 ตลอด ไม่ใช่แท่งเสีย)
+      - ต้องมีแท่งราย 1 ชม. ของวันนั้นอย่างน้อย 4 แท่ง จึงยอมเขียนทับ
+    """
+    try:
+        if df is None or df.empty or "Volume" not in df or len(df) < 25:
+            return df
+        # ดัชนี (^NDX/^GSPC ฯลฯ) ห้ามกู้ (เจอ 18 ก.ย. 2569): Volume ของดัชนีในแท่งวันล่าสุด
+        # Yahoo อัปเดตช้าไปหลายชั่วโมง (^NDX 17 ก.ย. = 1.25B เทียบปกติ ~7B) จึงเข้าเกณฑ์
+        # "วอลุ่มบาง" ทั้งที่ Close เป็นราคาปิดทางการที่ถูกต้องแล้ว (29,446.98) แล้วถูกเขียนทับ
+        # ด้วยปิดของแท่งราย 1 ชม. (29,442.12) — ดัชนีไม่มีปัญหาสัญญาโรล/วอลุ่มบางแบบฟิวเจอร์ส
+        if str(getattr(tk, "ticker", "")).startswith("^"):
+            return df
+
+        n = len(df)
+        start = max(21, n - lookback)
+        suspect = []
+        for i in range(start, n):
+            v = df["Volume"].iloc[i]
+            if pd.isna(v):
+                continue
+            med = float(df["Volume"].iloc[i - 20:i].median())
+            if med <= 0:
+                continue
+            if float(v) < med * 0.25:
+                suspect.append(i)
+        if not suspect:
+            return df
+
+        h = tk.history(period="60d", interval="1h", prepost=False)
+        if h is None or h.empty:
+            return df
+        h = h.dropna(subset=["Close"])
+        if h.empty:
+            return df
+        by_date = {}
+        for ts, row in h.iterrows():
+            by_date.setdefault(ts.date(), []).append(row)
+
+        for i in suspect:
+            rows = by_date.get(df.index[i].date())
+            if not rows or len(rows) < 4:
+                continue
+            df.iloc[i, df.columns.get_indexer(["Open", "High", "Low", "Close"])] = [
+                float(rows[0]["Open"]),
+                float(max(r["High"] for r in rows)),
+                float(min(r["Low"] for r in rows)),
+                float(rows[-1]["Close"]),
+            ]
+    except Exception:
+        # กู้ไม่สำเร็จก็ใช้ข้อมูลเดิม — ห้ามให้การ์ดทั้งใบพังเพราะการกู้ล้ม
+        pass
+    return df
+
+
+def _fill_missing_session_bars(tk, df, lookback=30, auto_adjust=True):
+    """เติม "แท่งรายวันที่หายไปทั้งแท่ง" กลางชุดข้อมูล จากข้อมูลราย 1 ชั่วโมง
+
+    บั๊ก (เจอ 24 ก.ย. 2569 รอบรายงานเช้า): Yahoo ส่งแท่งรายวันมา "ไม่มีวันอังคาร 22 ก.ย."
+    เลย (ไม่ใช่ NaN ไม่ใช่วอลุ่มบาง — หายทั้งแถว) กับ STX / CHPY / ^GSPC / ^NDX / ^VIX / ^TNX
+    ขณะที่หุ้นอีก 13 ตัวมีครบ และแท่งราย 1 ชม. ของวันนั้นก็มีครบทุกตัว
+    analyze() จับคู่ฐาน % ด้วย "วันที่ก่อนหน้า asof" จึงไปได้ปิดวันจันทร์ 21 ก.ย. แทน
+    = % รายวันกลายเป็น % สองวันเงียบ ๆ:
+        STX  +5.30% (จริง +0.44%)   ^NDX −0.04% (จริง −0.85%)
+        ^VIX +2.08% (จริง +6.83%)   CHPY +0.16% (จริง −1.7% ราคากระดาน)
+    ตัวกู้เดิมทั้งหมด (_patch_unsettled_last_bar / _repair_thin_volume_bars) ดูแค่แถว
+    ที่ "มีอยู่" จึงไม่มีทางเห็นแถวที่ไม่มี
+
+    วิธีแก้: ถ้าใน `lookback` แท่งท้ายมีช่องว่างเป็นวันธรรมดา ให้ดึงราย 1 ชม. มาดู
+    วันไหนมีแท่งราย 1 ชม. >= 4 แท่งแต่ไม่มีในรายวัน = เซสชันที่หายไป → สร้างแถวใหม่
+    (Open แท่งแรก / High-Low สุดขั้ว / Close แท่งสุดท้าย / Volume รวม)
+    ข้อจำกัด: Close มาจากแท่งราย 1 ชม. ต่างจากราคาปิดทางการได้เล็กน้อย
+    (STX 919.68 เทียบทางการ 919.84 = 0.02%) — ดีกว่าข้ามเซสชันไปทั้งวันมาก
+    การ์ด: ดึงราย 1 ชม. เฉพาะเมื่อเจอช่องว่างวันธรรมดาจริง (วันหยุดตลาดจะไม่มีแท่ง
+    ราย 1 ชม. จึงไม่ถูกเติม) · ไม่ใช้กับฟิวเจอร์ส (มีเส้นทางของตัวเอง)
+    """
+    try:
+        if df is None or df.empty or len(df) < 2:
+            return df
+        if _is_futures(str(getattr(tk, "ticker", ""))):
+            return df
+        tail = df.index[-lookback:]
+        have = {i.date() for i in df.index}
+        gaps = []
+        for a, b in zip(tail[:-1], tail[1:]):
+            for d in pd.bdate_range(a.date() + pd.Timedelta(days=1), b.date() - pd.Timedelta(days=1)):
+                gaps.append(d.date())
+        if not gaps:
+            return df
+        h = tk.history(period="60d", interval="1h", prepost=False, auto_adjust=auto_adjust)
+        if h is None or h.empty:
+            return df
+        h = h.dropna(subset=["Close"])
+        new_rows = {}
+        for d in gaps:
+            if d in have:
+                continue
+            rows = h[[i.date() == d for i in h.index]]
+            if len(rows) < 4:
+                continue          # วันหยุดตลาด หรือข้อมูลไม่พอ — ไม่เดา
+            rec = {c: 0.0 for c in df.columns}
+            rec.update({
+                "Open": float(rows["Open"].iloc[0]),
+                "High": float(rows["High"].max()),
+                "Low": float(rows["Low"].min()),
+                "Close": float(rows["Close"].iloc[-1]),
+                "Volume": float(rows["Volume"].sum()) if "Volume" in rows else 0.0,
+            })
+            if "Adj Close" in df.columns:
+                rec["Adj Close"] = rec["Close"]
+            ts = pd.Timestamp(d)
+            tz = getattr(df.index, "tz", None)
+            if tz is not None:
+                ts = ts.tz_localize(tz)
+            new_rows[ts] = rec
+        if new_rows:
+            add = pd.DataFrame.from_dict(new_rows, orient="index")[df.columns]
+            df = pd.concat([df, add]).sort_index()
+    except Exception:
+        # เติมไม่สำเร็จก็ใช้ข้อมูลเดิม — ห้ามให้การ์ดทั้งใบพังเพราะตัวกู้ล้ม
+        pass
+    return df
+
+
+def _futures_patch_forming_last_bar(tk, df):
+    """แทนที่ "แท่งรายวันสุดท้ายที่ยังเป็นเซสชันกำลังก่อตัว" ของฟิวเจอร์ส
+    ด้วยราคาปิดของเซสชันที่จบแล้วจริง ๆ
+
+    บั๊ก (เจอ 16 ก.ย. 2569 รอบรายงานเช้า 10:20 น. = 23:20 ET):
+    ตอนรายงานเช้ารันอยู่ เซสชันกลางคืนของ CME เปิดไปแล้ว (18:00 ET) และ Yahoo
+    เอา "เซสชันที่กำลังก่อตัว" นี้มาใส่เป็นแท่งรายวันทับวันที่ของเซสชันที่เพิ่งจบ
+    ตัวอย่างจริง CL=F วันที่ 2026-09-15 (ดึงตอน 23:20 ET):
+        Open 105.48  = ปริ๊นต์ 16:00 ET ของวันอังคาร (ไม่ใช่ราคาเปิดของวันอังคาร!)
+        Close 104.33 = ราคาสด ณ 23:00 ET ของเซสชันกลางคืน
+        Volume 15,052 เทียบค่ากลาง ~400,000 = 3.7%  → ยังไม่จบเซสชันชัดเจน
+    ขณะที่ราคาปิดจริงของวันอังคารคือ 105.83 (regularMarketPreviousClose)
+
+    ทำไมของเดิมดักไม่ได้: เส้นทางฟิวเจอร์สใน fetch() เรียกแต่
+    `_futures_daily_from_hourly()` ตัวเดียว ซึ่งมี "ประตูกันซ่อมทั้งที่ไม่พัง"
+    (max/median Volume < 10 เท่า = ข้าม) ที่ใส่ไว้ 12 ก.ย. 2569 พอวอลุ่มของ
+    GC=F กลับมาปกติแล้ว ประตูนี้จึงปิดทั้งสองตัว และ `_repair_thin_volume_bars()`
+    กับ `_patch_unsettled_last_bar()` "ไม่เคยถูกเรียกบนเส้นทางฟิวเจอร์สเลย"
+    ผลคือแท่งกำลังก่อตัวไหลผ่านไปเป็นเซสชันที่จบแล้วแบบเงียบ ๆ:
+        /api/market-ta/CL=F รายงานน้ำมันวันอังคาร +2.96% (เอาปริ๊นต์กลางคืน 104.37
+        ไปหารด้วย settle วันจันทร์ 101.39 = คร่อมมาตรฐาน) ของจริง 105.83/101.39
+        = +4.38%  ·  GC=F รายงาน +0.43% ของจริง 4332.80/4351.90 = -0.44%
+        (คนละเครื่องหมายด้วย)
+
+    วิธีแก้: ใช้ `regularMarketPreviousClose` จาก quote API เป็นราคาปิดของแท่งนั้น
+    — ฟิลด์นี้คือ "ราคาปิดของเซสชันที่จบไปแล้ว" ตามมาตรฐานเดียวกับที่ Yahoo ใช้
+    ทั้งชุด และเป็นฟิลด์เดียวกับที่การตรวจสอบเมื่อ 12 ก.ย. 2569 ยืนยันว่าตรงกับ
+    settle จริงของทองคำที่แหล่งภายนอกรายงาน (4,407.30 vs settle 4,407.50)
+
+    การ์ดกันกู้ผิด:
+      - ฟิวเจอร์ส (=F) เท่านั้น หุ้น/ดัชนี/ETF ไม่แตะ
+      - ต้องมี >= 21 แท่ง และค่ากลางวอลุ่ม 20 แท่งก่อนหน้า > 0
+      - แท่งสุดท้ายต้องวอลุ่มบางจริง (< 25% ของค่ากลาง) = ยังไม่จบเซสชัน
+        ถ้าแท่งสุดท้ายวอลุ่มครบ แปลว่าเซสชันจบแล้ว อย่าไปแตะ
+      - prevClose ต้องเป็นบวกและห่างจาก Open ของแท่งนั้นไม่เกิน 15%
+        (กันค่าขยะ/ค่าของสัญญาคนละเดือนที่โรลไปแล้ว)
+      - ดึง quote ไม่ได้/ค่าไม่ผ่านการ์ด = คืนของเดิม ห้ามให้การ์ดทั้งใบพัง
+    """
+    try:
+        if df is None or df.empty or len(df) < 21 or "Volume" not in df:
+            return df
+        v_last = df["Volume"].iloc[-1]
+        if pd.isna(v_last):
+            return df
+        med = float(df["Volume"].iloc[-21:-1].median())
+        if med <= 0:
+            return df
+        if float(v_last) >= med * 0.25:
+            return df          # เซสชันจบแล้ว แท่งนี้ใช้ได้ อย่าไปยุ่ง
+
+        # บั๊ก (เจอ 17 ก.ย. 2569 รอบรายงานเย็น 05:08 ET): หลังเที่ยงคืน ET แท่งที่กำลัง
+        # ก่อตัวมี "วันที่ใหม่" (2026-09-17) ไม่ได้ทับวันที่ของเซสชันที่เพิ่งจบแบบกรณี 23:20 ET
+        # ข้างบน การเขียน prevClose ทับจึงสร้าง "แท่งซ้ำ" ของเซสชัน 16 ก.ย. ที่ติดป้าย 17 ก.ย.
+        # ผลคือ asof ผิดวัน และ change_pct ≈ 0% กลบการเคลื่อนไหวจริงของเซสชันที่จบไปแล้ว
+        # → ถ้าแท่งเป็นของวันที่ ET ที่ยังไม่ถึง 16:00 (หรือวันในอนาคต) ให้ตัดทิ้งแทน
+        try:
+            now_et = pd.Timestamp.now(tz="America/New_York")
+            bar_date = df.index[-1].date()
+            if bar_date > now_et.date() or (bar_date == now_et.date() and now_et.hour < 16):
+                return df.iloc[:-1]
+            # บั๊ก (เจอ 28 ก.ย. 2569 รอบรายงานเช้าวันจันทร์ = 23:xx ET คืนวันอาทิตย์):
+            # Yahoo ติดป้ายเซสชันคืนวันอาทิตย์ (= เซสชันของวันจันทร์ที่กำลังก่อตัว) เป็น
+            # แท่งวันที่ 2026-09-27 (วันอาทิตย์) เงื่อนไขข้างบนมองว่า "วันนี้หลัง 16:00 = เซสชัน
+            # ที่เพิ่งจบ" จึงเขียน settle วันศุกร์ทับ → แท่งซ้ำของวันศุกร์ติดป้ายวันอาทิตย์
+            # ผลคือ market-ta ของ GC=F/CL=F ให้ asof=09-27 และ change_pct ≈ 0% กลบการ
+            # เคลื่อนไหวจริงวันศุกร์ (GC +0.54%, CL −2.33%) → วันเสาร์/อาทิตย์ไม่มีเซสชัน
+            # ที่ "จบ" ได้ แท่งที่ติดป้ายวันหยุดสุดสัปดาห์ต้องเป็นเซสชันกำลังก่อตัวเสมอ ตัดทิ้ง
+            if bar_date.weekday() >= 5:
+                return df.iloc[:-1]
+        except Exception:
+            pass
+
+        prev_close = None
+        try:
+            prev_close = tk.info.get("regularMarketPreviousClose")
+        except Exception:
+            prev_close = None
+        if prev_close is None:
+            return df
+        prev_close = float(prev_close)
+        if prev_close <= 0:
+            return df
+        open_ = float(df["Open"].iloc[-1])
+        if open_ > 0 and abs(prev_close - open_) / open_ > 0.15:
+            return df          # ห่างเกินไป น่าจะคนละสัญญา/ค่าขยะ
+
+        cols = df.columns.get_indexer(["High", "Low", "Close"])
+        hi = max(float(df["High"].iloc[-1]), prev_close)
+        lo = min(float(df["Low"].iloc[-1]), prev_close)
+        df.iloc[-1, cols] = [hi, lo, prev_close]
+    except Exception:
+        pass
+    return df
+
+
+_roll_cache = {}   # underlyingSymbol -> (ts, Close series ของสัญญานั้น)
+
+
+_MONTH_CODES = {"Jan": "F", "Feb": "G", "Mar": "H", "Apr": "J", "May": "K", "Jun": "M",
+                "Jul": "N", "Aug": "Q", "Sep": "U", "Oct": "V", "Nov": "X", "Dec": "Z"}
+
+
+def _futures_contract_symbol(tk):
+    """ชื่อ "สัญญาเฉพาะเดือน" ที่ quote ของฟิวเจอร์สต่อเนื่องอ้างอยู่ เช่น CLX26.NYM
+
+    บั๊ก (เจอ 24 ก.ย. 2569 รอบรายงานเช้า): Yahoo เปลี่ยน `info.underlyingSymbol` ของ CL=F
+    จาก "CLX26.NYM" (เมื่อวาน) เป็น "CL.NYM" แบบไม่มีเดือน — ชื่อนี้คือชุดต่อเนื่องตัวเดียวกับ
+    CL=F เอง ตัวกู้โรล 2 ตัว (_futures_front_contract_closes / _futures_back_adjust_roll)
+    จึงเทียบชุดต่อเนื่องกับตัวมันเอง ไม่เจอจุดโรล และปิดตัวเองเงียบ ๆ ผลคือ
+    /api/market-ta/CL%3DF รายงานน้ำมันวันพุธ 23 ก.ย. −2.57% (สัญญา พ.ย. 92.16 ÷ สัญญา ต.ค.
+    ที่หมดอายุแล้ว 94.59) ขณะที่ของจริงสัญญาเดียวกัน = 92.16 ÷ 90.52 = +1.81% ตรงกับ CNBC
+    (GC/SI/ES/NQ ยังได้ชื่อเฉพาะเดือนตามปกติ — โดนเฉพาะ CL)
+    วิธีแก้: ถ้าชื่อไม่มีตัวเลข (ไม่มีปีสัญญา) ให้ประกอบจาก shortName เช่น "Crude Oil Nov 26"
+    → root "CL" + รหัสเดือน "X" + ปี "26" + ตลาด ".NYM"
+    """
+    try:
+        info = tk.info
+        und = info.get("underlyingSymbol")
+        if not und or not isinstance(und, str):
+            return None
+        if any(ch.isdigit() for ch in und):
+            return und
+        root, _, exch = und.partition(".")
+        parts = str(info.get("shortName") or "").split()
+        if len(parts) >= 2 and parts[-2][:3] in _MONTH_CODES and parts[-1].isdigit():
+            yy = parts[-1][-2:]
+            return f"{root}{_MONTH_CODES[parts[-2][:3]]}{yy}" + (f".{exch}" if exch else "")
+        return None          # ระบุสัญญาไม่ได้ — อย่าใช้ชุดต่อเนื่องมาเทียบกับตัวเอง
+    except Exception:
+        return None
+
+
+def _futures_front_contract_closes(tk):
+    """คืนชุดราคาปิดรายวันของ "สัญญาปัจจุบัน" ที่ quote อ้างถึง (เช่น CLX26.NYM)
+
+    ใช้ทำฐาน % ของฟิวเจอร์สให้เป็น "สัญญาเดียวกันทั้งเศษและส่วน"
+
+    ที่มา (23 ก.ย. 2569): การ back-adjust แบบ Panama เลื่อนแท่งเก่าด้วยส่วนต่าง
+    "ค่าเดียว" ที่วัดจากแท่งล่าสุด ซึ่งรักษาระดับราคาและรูปทรงกราฟได้ถูกต้อง
+    แต่ยังไม่แม่นพอสำหรับ % รายวัน เพราะ basis จริงขยับทุกวัน —
+    ตัวอย่างจริงของ CL=F วันที่ 22 ก.ย.: back-adjust ให้ฐาน 91.71
+    (95.78 − 4.07) แต่ราคาปิดจริงของสัญญา พ.ย. เมื่อวันจันทร์คือ 92.37
+    ทำให้ change_pct ได้ −1.30% แทนที่จะเป็น −2.00% ที่ถูกต้อง
+    ดึงราคาปิดของสัญญานั้นมาตรง ๆ จึงแม่นกว่า และไม่ต้องเดา basis เลย
+    """
+    try:
+        und = _futures_contract_symbol(tk)   # ไม่ใช้ underlyingSymbol ตรง ๆ (เจอ 24 ก.ย. 2569)
+        if not und:
+            return None
+        now = time.time()
+        c = _roll_cache.get(und)
+        if c and now - c[0] < 1800:
+            return c[1]
+        h = yf.Ticker(und).history(period="3mo", interval="1d", auto_adjust=True)
+        if h is None or h.empty:
+            return None
+        ctr = h["Close"].dropna()
+        if ctr.empty:
+            return None
+        _roll_cache[und] = (now, ctr)
+        return ctr
+    except Exception:
+        return None
+
+
+def _futures_back_adjust_roll(tk, df, check_bars=15):
+    """ปรับราคาแท่งของ "สัญญาเก่า" ให้อยู่ในระดับเดียวกับสัญญาปัจจุบัน (Panama back-adjust)
+
+    บั๊ก (เจอ 17 ก.ย. 2569 รอบรายงานเย็น): สัปดาห์หมดอายุสัญญา ก.ย. Yahoo เปลี่ยน
+    ES=F / NQ=F จากสัญญา ก.ย. (U26) ไปเป็น ธ.ค. (Z26) — แท่งรายวันถึง 16 ก.ย. ยังเป็น
+    สัญญา ก.ย. แต่ quote/แท่งราย 1 ชม./regularMarketPreviousClose เป็นสัญญา ธ.ค. แล้ว
+    ส่วนต่างราคาระหว่างสัญญา (basis) ~66 จุด ES / ~293 จุด NQ จึงถูกนับเป็น "ราคาขยับ":
+        /api/market-ta/ES%3DF รายงาน change_pct +0.88% (7623.00 ธ.ค. ÷ 7556.50 ก.ย.)
+        ของจริงเซสชัน 16 ก.ย. = ESZ26 7623.00 ÷ 7656.00 = −0.43% (ESU26 ก็ −0.43%)
+    และ EMA/แนวรับ/แนวต้านทั้งชุดอยู่ในระดับของสัญญา ก.ย. ต่ำกว่าราคาจริง ~0.9%
+
+    วิธีแก้: ดึงประวัติรายวันของสัญญาปัจจุบัน (info.underlyingSymbol เช่น ESZ26.CME)
+    เทียบราคาปิดทีละวันกับชุดต่อเนื่อง หา "วันล่าสุดที่ไม่ตรงกัน" = แท่งสุดท้ายของสัญญาเก่า
+    แล้วบวกส่วนต่างของวันนั้นเข้า OHLC ของทุกแท่งตั้งแต่วันนั้นย้อนหลัง
+
+    การ์ด: ฟิวเจอร์สเท่านั้น · ไม่ตรงกัน = ต่างเกิน 25% ของค่ากลางช่วง H-L 20 แท่ง
+    (กันความต่างเล็กน้อยจากการตัด 16:00 ET vs settle) · ส่วนต่างต้องไม่เกิน 5%
+    · ถ้าแท่งล่าสุดที่เทียบได้ยังไม่ตรงกัน แปลว่ายังไม่โรล/ข้อมูลแปลก → ไม่แตะ
+    · ดึงไม่ได้ = คืนของเดิม
+    """
+    try:
+        if df is None or df.empty or len(df) < 21:
+            return df
+        # ไม่ใช้ underlyingSymbol ตรง ๆ — CL=F คืน "CL.NYM" ไม่มีเดือน (เจอ 24 ก.ย. 2569)
+        und = _futures_contract_symbol(tk)
+        if not und or not isinstance(und, str):
+            return df
+        now = time.time()
+        c = _roll_cache.get(und)
+        if c and now - c[0] < 1800:
+            ctr = c[1]
+        else:
+            h = yf.Ticker(und).history(period="3mo", interval="1d", auto_adjust=True)
+            ctr = h["Close"].dropna() if h is not None and not h.empty else None
+            if ctr is None or ctr.empty:
+                return df
+            _roll_cache[und] = (now, ctr)
+        ctr_by_date = {i.date(): float(v) for i, v in ctr.items()}
+
+        rng_med = float((df["High"] - df["Low"]).iloc[-21:-1].median())
+        tol = max(rng_med * 0.25, 1e-9)
+
+        n = len(df)
+        last_match_seen = False
+        roll_idx = None
+        gap = 0.0
+        unmatched = []     # ส่วนต่างของแท่งท้ายที่ไม่ตรงเลยสักแท่ง (กรณีทั้งชุดยังเป็นสัญญาเก่า)
+        for i in range(n - 1, max(-1, n - 1 - check_bars), -1):
+            d = df.index[i].date()
+            if d not in ctr_by_date:
+                continue
+            diff = ctr_by_date[d] - float(df["Close"].iloc[i])
+            if abs(diff) <= tol:
+                last_match_seen = True
+                continue
+            if not last_match_seen:
+                unmatched.append((i, diff))
+                continue
+            roll_idx = i
+            gap = diff
+            break
+        if roll_idx is None and not last_match_seen and len(unmatched) >= 3:
+            # ทั้งชุดยังเป็นสัญญาเก่า แต่ quote เป็นสัญญาใหม่แล้ว (เช้า 17 ก.ย. หลังตัดแท่ง
+            # กำลังก่อตัวทิ้ง แท่งสุดท้าย 16 ก.ย. ยังเป็น ESU26 7556.50 ขณะที่ ESZ26 = 7623.00)
+            # ยอมปรับเมื่อส่วนต่างนิ่ง (แกว่งไม่เกิน tol) = basis จริง ไม่ใช่ข้อมูลเสีย
+            diffs = [x[1] for x in unmatched[:5]]
+            # บั๊ก (เจอ 18 ก.ย. 2569 รอบรายงานเย็น 05:40 ET): CL=F โรลจาก CLV26 → CLX26
+            # ส่วนต่างระหว่างเดือนของน้ำมันช่วง backwardation ไม่นิ่งเท่า ES/NQ
+            # (5 แท่งท้าย −4.68/−4.92/−5.08/−4.25/−4.11 แกว่ง 0.97 > tol 0.90) การ์ดเดิม
+            # จึงปฏิเสธ แล้ว /api/market-ta/CL%3DF ค้างอยู่ที่สัญญา ต.ค. 101.91 ขณะที่
+            # /api/market ใช้สัญญา พ.ย. 95.76 (ห่างกัน ~$6 = 6%)
+            # → ยอมให้แกว่งได้ถึง 25% ของขนาดส่วนต่างด้วย ข้อมูลขยะจะแกว่งเกินสัดส่วนนี้มาก
+            #
+            # บั๊ก (เจอ 23 ก.ย. 2569 รอบรายงานเช้า): CL=F โรล CLV26 → CLX26 อีกครั้ง
+            # (สัญญา ต.ค. หมดอายุวันอังคารที่ 22 ก.ย.) การ์ดที่ผ่อนไว้เมื่อ 18 ก.ย. "ยังแน่นเกินไป"
+            # ส่วนต่าง 5 แท่งท้าย −4.07/−3.41/−4.22/−4.68/−4.92 แกว่ง 1.51
+            # > เกณฑ์ max(tol 0.90, 4.07×0.25 = 1.02) จึงถูกปฏิเสธซ้ำรอยเดิม
+            # ผลคือ /api/market-ta/CL%3DF ค้างที่สัญญา ต.ค. 94.59 ขณะที่ /api/market ใช้
+            # สัญญา พ.ย. ~89–90 (ห่างกัน ~$5) และ change_pct เอาราคา พ.ย. หารปิด ต.ค.
+            # ได้ −5.49% ทั้งที่ของจริง (พ.ย. ต่อ พ.ย.) คือ 90.52 ÷ 92.37 = −2.00%
+            #
+            # "ส่วนต่างต้องนิ่ง" เป็นเกณฑ์ที่ผิดธรรมชาติของน้ำมันช่วง backwardation อยู่แล้ว
+            # เพราะ basis ระหว่างเดือนขยับเองทุกวันตาม term structure ยิ่งชันยิ่งแกว่ง
+            # การไล่ผ่อนตัวเลขทีละรอบจึงเป็นการวิ่งตามอาการ ไม่ใช่แก้ที่เกณฑ์
+            # เกณฑ์ที่ตรงธรรมชาติกว่าคือ "ส่วนต่างต้องมีเครื่องหมายเดียวกันทุกแท่ง"
+            # (term structure จริงไม่พลิกข้าง contango↔backwardation แบบวันต่อวัน)
+            # แล้วปล่อยให้ขนาดแกว่งได้ตามสัดส่วนของ basis เอง
+            # ข้อมูลขยะจะพลิกเครื่องหมายหรือแกว่งเกินสัดส่วนนี้มาก และยังมีการ์ด 5% คุมท้ายอยู่
+            same_sign = all(d > 0 for d in diffs) or all(d < 0 for d in diffs)
+            mean_mag = sum(abs(d) for d in diffs) / len(diffs)
+            if same_sign and max(diffs) - min(diffs) <= max(tol, mean_mag * 0.6):
+                roll_idx = n - 1
+                gap = unmatched[0][1]
+        if roll_idx is None:
+            return df
+        if abs(gap) / float(df["Close"].iloc[roll_idx]) > 0.05:
+            return df
+        df = df.copy()
+        cols = df.columns.get_indexer(["Open", "High", "Low", "Close"])
+        df.iloc[: roll_idx + 1, cols] = df.iloc[: roll_idx + 1, cols].values + gap
+    except Exception:
+        pass
+    return df
+
+
 def _patch_unsettled_last_bar(tk, df):
     """เติมราคาปิดของแท่งรายวันล่าสุดที่ Yahoo ยังไม่ settle
 
@@ -516,12 +1097,25 @@ def _patch_unsettled_last_bar(tk, df):
     try:
         if df is None or df.empty or "Close" not in df:
             return df
-        if not pd.isna(df["Close"].iloc[-1]):
-            return df
-        # ต้องมี Volume จริงจึงเชื่อว่าเป็นวันที่เทรดแล้ว ไม่ใช่แถวว่างของวันหยุด
+
         vol = df["Volume"].iloc[-1] if "Volume" in df else None
-        if vol is None or pd.isna(vol) or float(vol) <= 0:
+
+        if pd.isna(df["Close"].iloc[-1]):
+            # กรณีที่ 1 (เจอ 28 ส.ค. 2569) — Close เป็น NaN ทั้งที่มี Volume
+            # ต้องมี Volume จริงจึงเชื่อว่าเป็นวันที่เทรดแล้ว ไม่ใช่แถวว่างของวันหยุด
+            if vol is None or pd.isna(vol) or float(vol) <= 0:
+                return df
+        elif _is_stub_bar(df):
+            # กรณีที่ 2 (เจอ 5 ก.ย. 2569 กับทองคำ GC=F) — Close ไม่ใช่ NaN แต่แท่งเป็น "ซาก"
+            # Yahoo คืนแท่งรายวันที่ Open=High=Low=Close=4429.80 และ Volume แค่ 16 สัญญา
+            # (ค่ากลาง 20 วันก่อนหน้า ~340) เพราะสัญญาฟิวเจอร์สแทบไม่มีการเทรดในวันนั้น
+            # ผลคือ /api/market-ta/GC%3DF รายงาน 4429.80 (-1.378%) ขณะที่ราคาปิดจริงคือ
+            # 4476.60 — เพี้ยน 47 จุด และขัดกับทั้ง /api/market และแหล่งข่าวภายนอก
+            # แท่งซากแบบนี้ผ่าน dropna ได้ จึงรอดสายตามาตลอด
+            pass
+        else:
             return df
+
         target = df.index[-1].date()
         m = tk.history(period="5d", interval="1m", prepost=False)
         if m is None or m.empty:
@@ -544,7 +1138,22 @@ def fetch(ticker, period="1y", interval="1d"):
     df = tk.history(period=period, interval=interval, auto_adjust=True)
     # กู้แท่งล่าสุดที่ราคาปิดยังไม่ settle "ก่อน" dropna มิฉะนั้นจะเสียเซสชันล่าสุดไปเงียบ ๆ
     if interval == "1d":
-        df = _patch_unsettled_last_bar(tk, df)
+        if _is_futures(ticker):
+            # ฟิวเจอร์ส: แท่งรายวันของ Yahoo เชื่อไม่ได้ทั้งชุด (เจอ 12 ก.ย. 2569)
+            # ประกอบใหม่จากแท่งราย 1 ชม. ตัดที่ 16:00 ET ให้ทุกแท่งมาตรฐานเดียวกัน
+            df = _futures_daily_from_hourly(tk, df)
+            # แท่งสุดท้ายอาจเป็น "เซสชันกลางคืนที่กำลังก่อตัว" ที่ Yahoo เอามาทับ
+            # วันที่ของเซสชันที่เพิ่งจบ (เจอ 16 ก.ย. 2569) — ต้องกู้หลังประกอบใหม่
+            df = _futures_patch_forming_last_bar(tk, df)
+            # สัปดาห์โรลสัญญา แท่งเก่าเป็นสัญญาคนละเดือน (เจอ 17 ก.ย. 2569)
+            df = _futures_back_adjust_roll(tk, df)
+        else:
+            df = _patch_unsettled_last_bar(tk, df)
+            # กู้แท่งวอลุ่มบางย้อนหลังด้วย (เจอ 7 ก.ย. 2569) — ไม่งั้น "ฐาน %" ยังผิด
+            # แม้ระดับราคาแท่งสุดท้ายจะถูกกู้ไปแล้ว
+            df = _repair_thin_volume_bars(tk, df)
+            # แท่งรายวันหายทั้งแถว (เจอ 24 ก.ย. 2569 — วันที่ 22 ก.ย. หายจาก STX/^NDX ฯลฯ)
+            df = _fill_missing_session_bars(tk, df, auto_adjust=True)
     # Yahoo แถมแถวเปล่า (NaN) มาเป็นครั้งคราว เช่นวันหยุดพิเศษหรือช่วงข้อมูลกำลังอัปเดต
     # ถ้าไม่ตัดทิ้ง จะทำให้การคำนวณที่แปลงเป็นจำนวนเต็ม (Volume Profile) พังทั้งการ์ด
     if df is not None and not df.empty:
@@ -631,6 +1240,8 @@ def prev_close(ticker, tk=None):
         # ผลคือ % บนการ์ด/quotes เทียบผิดฐาน (NVDA โชว์ -4.00% ทั้งที่เทียบปิดศุกร์จริงคือ +0.61%)
         # → เรียกตัวกู้แท่งตัวเดียวกับที่ fetch() ใช้ "ก่อน" dropna
         h = _patch_unsettled_last_bar(tk, h)
+        h = _repair_thin_volume_bars(tk, h)
+        h = _fill_missing_session_bars(tk, h, auto_adjust=False)   # เจอ 24 ก.ย. 2569
         if h is not None and not h.empty:
             h = h.dropna(subset=["Close"])     # กันแถวเปล่าจาก Yahoo → ไม่งั้นได้ NaN
         if h is None or h.empty:
@@ -701,9 +1312,20 @@ def fundamentals(tk, price):
     peg = info.get("trailingPegRatio") or info.get("pegRatio")
     out["peg"] = float(peg) if peg else None
     out["target"] = info.get("targetMeanPrice")
-    out["w52h"] = info.get("fiftyTwoWeekHigh")
-    out["w52l"] = info.get("fiftyTwoWeekLow")
+    # บั๊ก (เจอ 14 ก.ย. 2569 รอบรายงานเช้า): Yahoo info ของ ^TNX คืน fiftyTwoWeekLow = 0.0
+    # (ค่าว่างที่ Yahoo ใส่เป็นศูนย์ — regularMarketDayLow ก็เป็น 0.0 เหมือนกัน) ทั้งที่จุดต่ำสุดจริง
+    # จากกราฟรายวันคือ 3.947 → /api/market-ta/%5ETNX รายงานกรอบ 52 สัปดาห์ 0.0–4.985
+    # ราคา/ผลตอบแทนที่ ≤ 0 ไม่มีจริงสำหรับสินทรัพย์ในรายการ จึงถือเป็น "ไม่มีข้อมูล" แล้วให้
+    # analyze() ถอยไปคำนวณจากกราฟแทน
+    _w52h, _w52l = info.get("fiftyTwoWeekHigh"), info.get("fiftyTwoWeekLow")
+    out["w52h"] = _w52h if isinstance(_w52h, (int, float)) and _w52h > 0 else None
+    out["w52l"] = _w52l if isinstance(_w52l, (int, float)) and _w52l > 0 else None
     out["market_state"] = info.get("marketState")
+    # บั๊ก (เจอ 12 ก.ย. 2569 รอบรายงานเย็น): Yahoo ส่ง marketState = "REGULAR" ให้ฟิวเจอร์ส
+    # (ES=F/NQ=F/GC=F) แม้ในวันเสาร์ที่ Globex ปิดอยู่ ผู้อ่าน /api/market-ta จึงเข้าใจผิดว่า
+    # ราคากำลังเทรดสด ทั้งที่เป็นราคาปิดวันศุกร์ → บังคับเป็น CLOSED ในช่วงปิดสุดสัปดาห์ของ CME
+    if _is_futures(sym) and _cme_weekend_closed():
+        out["market_state"] = "CLOSED"
     # กลุ่มธุรกิจ — ใช้เลือกลายกราฟฟิกประจำการ์ดบนหน้าเว็บ
     out["sector"] = info.get("sector")
     out["industry"] = info.get("industry")
@@ -826,16 +1448,33 @@ def _batch_quotes(tickers, keep_raw=False):
         st = q.get("marketState") or ""
         # ราคา "สดที่สุด" ที่จะเอาไปโชว์: ถ้ามีดีลนอกเวลาให้ใช้ดีลนั้น ไม่งั้นใช้ราคาปกติ
         # PREPRE/CLOSED ยังยึด postMarketPrice เพราะเป็นดีลล่าสุดที่เกิดขึ้นจริง
-        px, ts_ep = reg, q.get("regularMarketTime")
+        px, ts_ep, off_hours = reg, q.get("regularMarketTime"), False
         if st.startswith("PRE") and q.get("preMarketPrice") is not None:
-            px, ts_ep = q["preMarketPrice"], q.get("preMarketTime")
+            px, ts_ep, off_hours = q["preMarketPrice"], q.get("preMarketTime"), True
         elif q.get("postMarketPrice") is not None and st in ("POST", "POSTPOST", "PREPRE", "CLOSED"):
-            px, ts_ep = q["postMarketPrice"], q.get("postMarketTime")
+            px, ts_ep, off_hours = q["postMarketPrice"], q.get("postMarketTime"), True
         prev = q.get("regularMarketPreviousClose")
+        # --- บั๊กฐาน % ของราคานอกเวลา (เจอ 4 ก.ย. 2569 รอบเย็น) ---
+        # เดิม chg เอาราคาพรีมาร์เก็ต/อาฟเตอร์มาร์เก็ตหารด้วย regularMarketPreviousClose
+        # ซึ่งเป็น "ปิดของเซสชันก่อนเซสชันล่าสุด" ไม่ใช่ปิดล่าสุด → นับการเคลื่อนไหวของ
+        # เซสชันเต็มวันล่าสุดซ้ำเข้าไปในตัวเลขพรีมาร์เก็ตอีกรอบ
+        # ตัวอย่างจริงเช้า 4 ก.ย.: PLTR ปิด 3 ก.ย. ที่ 182.53 (+7.71% จาก 169.46)
+        #   พรีมาร์เก็ต 181.00 = -0.84% แต่ระบบรายงาน +6.79% (เครื่องหมายกลับด้าน)
+        # ฐานที่ถูกต้องของราคานอกเวลาคือ regularMarketPrice = ปิดของเซสชันล่าสุด
+        # และถ้า Yahoo ส่ง pre/postMarketChangePercent มาให้แล้วก็ใช้ค่านั้นตรง ๆ
+        chg_base, chg_pct = prev, None
+        if off_hours:                           # กำลังใช้ราคานอกเวลาทำการ
+            chg_base = float(reg)
+            chg_pct = (q.get("preMarketChangePercent") if st.startswith("PRE")
+                       else q.get("postMarketChangePercent"))
+        if chg_pct is None:
+            chg_pct = ((float(px) / chg_base - 1) * 100) if chg_base else None
         out[sym] = {
             "ticker": sym,
             "price": float(px),
-            "chg": ((float(px) / prev - 1) * 100) if prev else None,
+            "chg": float(chg_pct) if chg_pct is not None else None,
+            # ฐานที่ใช้หาร chg — ผู้เรียกจะได้ตรวจได้ว่าเทียบกับปิดวันไหน
+            "chg_base": float(chg_base) if chg_base else None,
             "ts": _fmt_ts(ts_ep, tz),
             # ราคาปิด session ทางการ + % ทางการของ Yahoo — ตรงกับที่ Google/โบรกโชว์
             # ฝั่งเว็บเอาไปแทน r.price ตอนนอกเวลา ทำให้พาดหัวไม่ค้างเป็นของรอบสแกนก่อน
@@ -1039,7 +1678,7 @@ def analyze(ticker, cfg):
 
     last, prev = df.iloc[-1], df.iloc[-2]
     price = float(last["Close"])
-    support, resistance, sup_basis, res_basis = support_resistance(df)
+    support, resistance, sup_basis, res_basis, sr_recent = support_resistance(df)
 
     # ต้องรู้สถานะตลาดก่อนคิดวอลุ่ม — ระหว่างตลาดเปิด แท่งสุดท้ายยังเดินไม่จบ
     fund = fundamentals(tk, price)
@@ -1168,7 +1807,27 @@ def analyze(ticker, cfg):
     # ซึ่งเหมาะกับอินดิเคเตอร์ แต่ทำให้ % ผิดในวัน ex-dividend ของตัวจ่ายปันผลถี่
     sess_prev_val = float(prev["Close"])
     try:
-        raw = tk.history(period="7d", interval="1d", auto_adjust=False)["Close"].dropna()
+        # ดึงยาวขึ้นเป็น 3 เดือน (เดิม 7 วัน) เพราะ _repair_thin_volume_bars() ต้องใช้
+        # ค่ากลางวอลุ่ม 20 แท่งย้อนหลังเป็นตัวเทียบ ข้อมูล 7 วันไม่พอให้การ์ดทำงาน
+        raw_df = tk.history(period="3mo", interval="1d", auto_adjust=False)
+        # บั๊ก (เจอ 7 ก.ย. 2569): ฐาน % ดึงแท่งรายวัน "ชุดใหม่" มาต่างหาก จึงไม่ได้
+        # ผ่านการกู้แท่งเสียที่ fetch() ทำไว้กับ df หลักเลย ผลคือ /api/market-ta/GC%3DF
+        # รายงานระดับราคาถูก (4,476.60 — กู้แล้ว) แต่ change_pct +1.06% เพราะยังเอา
+        # ไปเทียบแท่งซากของวันศุกร์ที่ 4,429.80 ซึ่งของจริงคือ 4,476.60 (เท่ากัน = 0%)
+        # ต้องกู้ raw ด้วยเครื่องเดียวกับ df หลัก ไม่งั้นตัวเลขสองฝั่งขัดกันเอง
+        if _is_futures(ticker):
+            # ฟิวเจอร์ส: ใช้เครื่องเดียวกับ fetch() (ตัด 16:00 ET) ไม่งั้นฐาน % คร่อม
+            # มาตรฐานกับราคาพาดหัว — คือบั๊กทองคำ 12 ก.ย. 2569 (ต่างกัน 1.4 จุด %)
+            raw_df = _futures_daily_from_hourly(tk, raw_df)
+            # ฐาน % ต้องผ่านตัวกู้ชุดเดียวกับ df หลัก ไม่งั้นสองฝั่งขัดกันเอง
+            raw_df = _futures_patch_forming_last_bar(tk, raw_df)
+            raw_df = _futures_back_adjust_roll(tk, raw_df)
+        else:
+            raw_df = _patch_unsettled_last_bar(tk, raw_df)
+            raw_df = _repair_thin_volume_bars(tk, raw_df)
+            # ฐาน % ต้องไม่ข้ามเซสชันที่ Yahoo ทำหาย (เจอ 24 ก.ย. 2569 — ดู docstring)
+            raw_df = _fill_missing_session_bars(tk, raw_df, auto_adjust=False)
+        raw = raw_df["Close"].dropna()
         raw = raw[raw > 0]
         # จับคู่ด้วย "วันที่" ไม่ใช่ตำแหน่ง: ถ้า Yahoo ยังไม่ settle แท่งล่าสุด (Close = NaN)
         # dropna จะทิ้งแท่งนั้น ทำให้ iloc[-2] เลื่อนย้อนไปอีกหนึ่งเซสชัน
@@ -1180,6 +1839,19 @@ def analyze(ticker, cfg):
             sess_prev_val = float(before.iloc[-1])
         elif len(raw) >= 2:
             sess_prev_val = float(raw.iloc[-2])
+
+        # ฟิวเจอร์ส: ถ้ารู้ว่า quote อ้างสัญญาไหน ให้ใช้ราคาปิดของ "สัญญานั้นเอง"
+        # เป็นฐาน % แทนชุดต่อเนื่องที่ back-adjust มา (แม่นกว่า — ดูคอมเมนต์ที่
+        # _futures_front_contract_closes) · การ์ด: ต้องมีแท่งก่อนวัน asof จริง
+        # และต้องไม่ห่างจากฐานเดิมเกิน 10% กันกรณีดึงสัญญาผิดตัว
+        if _is_futures(ticker):
+            ctr = _futures_front_contract_closes(tk)
+            if ctr is not None and len(ctr) >= 2:
+                cb = ctr[[i.date() < asof_date for i in ctr.index]]
+                if len(cb):
+                    cand = float(cb.iloc[-1])
+                    if cand > 0 and abs(cand - sess_prev_val) / sess_prev_val <= 0.10:
+                        sess_prev_val = cand
     except Exception:
         pass
 
@@ -1203,6 +1875,10 @@ def analyze(ticker, cfg):
         # None = ไม่มีจริง ๆ — อย่าอ่านว่า "ไม่มีแนวต้าน" โดยไม่ดู basis ก่อน
         "support_basis": sup_basis,
         "resistance_basis": res_basis,
+        "recent_high": sr_recent["recent_high"],
+        "recent_low": sr_recent["recent_low"],
+        "resistance_breached": sr_recent["resistance_breached"],
+        "support_breached": sr_recent["support_breached"],
         "atr": atr_now,
         "stop_suggest": price - 2 * atr_now,
         "target_suggest": price + 3 * atr_now,
@@ -1233,7 +1909,18 @@ def analyze(ticker, cfg):
     # — คำนวณจากกราฟราคาที่มีอยู่แล้วแทน เพื่อให้เว็บสาธารณะได้ข้อมูลครบเท่าเครื่อง local
     if result["prev_close"] is None and len(df) >= 2:
         result["prev_close"] = float(df["Close"].iloc[-2])
+    # เช็กสองขาแยกกัน (แก้ 14 ก.ย. 2569) — เดิมเติม w52l เฉพาะตอน w52h หาย
+    # พอ Yahoo ให้ขาบนมาแต่ขาล่างเสีย (^TNX) ขาล่างจึงหลุดการเติมไป
     if result["w52h"] is None and len(df) >= 30:
+        result["w52h"] = float(df["High"].tail(252).max())
+    if result["w52l"] is None and len(df) >= 30:
+        result["w52l"] = float(df["Low"].tail(252).min())
+    # บั๊ก (เจอ 23 ก.ย. 2569 รอบรายงานเย็น): ฟิวเจอร์สที่โรลสัญญาแล้ว w52h/w52l มาจาก
+    # Yahoo info ซึ่งเป็นชุดต่อเนื่อง "ไม่ปรับโรล" แต่ support/resistance คำนวณจาก df ที่
+    # back-adjust แล้ว สองฟิลด์จึงอยู่คนละระดับราคา — NQ=F คืน resistance 31,271.57
+    # (basis w52) แต่ w52h 31,094.75 ต่ำกว่าแนวต้านที่ "มาจาก 52 สัปดาห์" เสียเอง
+    # → ฟิวเจอร์สให้คำนวณกรอบ 52 สัปดาห์จาก df ชุดเดียวกับแนวรับ/แนวต้านเสมอ
+    if _is_futures(ticker) and len(df) >= 30:
         result["w52h"] = float(df["High"].tail(252).max())
         result["w52l"] = float(df["Low"].tail(252).min())
     if result["market_state"] is None:
@@ -1300,9 +1987,19 @@ def make_advice(r):
 
     vp = r.get("vp")
     sup = r.get("support")
+    entry_px = sup if sup else r["ema20"]
     entry = f"{sup:,.2f}" if sup else f"{r['ema20']:,.2f} (EMA20)"
+    # บั๊ก (เจอ 13 ก.ย. 2569 รอบเย็น): stop_suggest = ราคาปัจจุบัน − 2×ATR แต่แผนนี้แนะนำให้เข้าที่แนวรับ
+    # ถ้าแนวรับอยู่ลึกกว่า 2×ATR จุดตัดขาดทุนจะอยู่ "เหนือ" จุดเข้า (PLTR เข้า 122.64 ตัดขาดทุน 152.37,
+    # INTC เข้า 89.59 ตัดขาดทุน 92.10) — แก้เฉพาะข้อความแผน: ถ้า stop ≥ จุดเข้า ให้ใช้จุดเข้า − 1×ATR แทน
+    # ค่าฟิลด์ stop_suggest เดิมไม่เปลี่ยน (ยังเป็นราคา − 2×ATR ตามที่ออกแบบ)
+    stop_px = r["stop_suggest"]
+    stop_note = ""
+    if entry_px and stop_px >= entry_px:
+        stop_px = entry_px - r["atr"]
+        stop_note = " (ต่ำกว่าจุดเข้า 1×ATR)"
     plan = (f"จุดเข้าที่น่าสนใจ: แถวแนวรับ {entry} | "
-            f"ตัดขาดทุนถ้าหลุด {r['stop_suggest']:,.2f} | "
+            f"ตัดขาดทุนถ้าหลุด {stop_px:,.2f}{stop_note} | "
             f"เป้าทำกำไรแรก {r['target_suggest']:,.2f}")
     if vp:
         plan += f" | โซนวอลุ่ม: POC {vp['poc']:,.2f} · VA {vp['val']:,.2f}-{vp['vah']:,.2f}"

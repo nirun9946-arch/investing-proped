@@ -8,3 +8,9 @@ cloudflared.exe
 *.bak
 _server.log
 _server.err
+
+# scratch backups and local state (never deploy)
+*.bak-*
+*.bak_*
+_server_auto.log
+baseline_roll.json

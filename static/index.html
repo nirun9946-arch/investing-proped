@@ -111,10 +111,30 @@
   .conf-lbl{margin-top:7px;font-size:.86rem;line-height:1.5;color:var(--text);opacity:.92;
     display:flex;gap:6px;align-items:flex-start}
   .conf-lbl .cl-ic{flex:none}
-  .spark{display:block;width:100%;height:36px;margin-top:10px}
+  .spark{display:block;width:100%;height:118px}
   .spark-cap{display:flex;justify-content:space-between;align-items:center;
     font-size:.72rem;color:var(--muted);margin-top:3px}
   .spark-cap b{font-weight:700}
+  .spark-wrap{position:relative;margin-top:14px;padding:9px 9px 7px;border-radius:14px;
+    background:linear-gradient(180deg,rgba(8,15,29,.68),rgba(15,23,42,.28));
+    border:1px solid rgba(148,163,184,.12);overflow:hidden;cursor:crosshair}
+  .spark-grid{stroke:rgba(148,163,184,.13);stroke-width:1;stroke-dasharray:3 4;
+    vector-effect:non-scaling-stroke}
+  .spark-axis{fill:#718096;font:8px var(--font-body)}
+  .spark-ma{fill:none;stroke:#a78bfa;stroke-width:1.25;stroke-dasharray:4 3;
+    stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;opacity:.9}
+  .spark-guide{stroke:rgba(255,255,255,.5);stroke-width:1;stroke-dasharray:2 2;
+    vector-effect:non-scaling-stroke;opacity:0}
+  .spark-dot{opacity:0;filter:drop-shadow(0 0 4px currentColor)}
+  .spark-wrap.is-hover .spark-guide,.spark-wrap.is-hover .spark-dot{opacity:1}
+  .spark-tip{position:absolute;z-index:3;top:8px;left:8px;pointer-events:none;opacity:0;
+    min-width:92px;padding:6px 8px;border-radius:9px;background:rgba(5,10,21,.94);
+    border:1px solid rgba(167,139,250,.4);box-shadow:0 8px 24px rgba(0,0,0,.35);
+    font-size:.68rem;line-height:1.45;color:var(--muted);transform:translateX(-50%)}
+  .spark-tip b{display:block;color:var(--text);font-size:.78rem;font-variant-numeric:tabular-nums}
+  .spark-wrap.is-hover .spark-tip{opacity:1}
+  .spark-legend{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.65rem}
+  .spark-legend i{display:inline-block;width:12px;height:2px;border-radius:2px;margin-right:4px;vertical-align:middle}
   .term{border-bottom:1px dashed rgba(148,163,184,.55);cursor:help}
   .term:hover{border-bottom-color:var(--blue);color:var(--blue)}
   #introCard{margin:16px 22px 0;border-radius:var(--r-card);padding:20px 24px;display:none;
@@ -965,9 +985,181 @@
     .lrow .lpx b{font-size:1.12rem}
     .lrow .lpx .lchg{font-size:.86rem}
   }
+
+  /* ===== 2026 UI polish: clearer hierarchy, calmer density, consistent canvas ===== */
+  :root{
+    --canvas:1320px;
+    --surface:rgba(20,29,49,.82);
+    --surface-hi:rgba(31,42,67,.82);
+  }
+  body{background-position:center top}
+  body{background-image:
+    radial-gradient(circle at 8% 4%,rgba(79,70,229,.18),transparent 30%),
+    radial-gradient(circle at 92% 18%,rgba(14,165,233,.11),transparent 25%),
+    linear-gradient(180deg,#0a1020 0%,#0e1629 48%,#0a1120 100%)}
+  body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
+    background:radial-gradient(520px circle at var(--mx,75%) var(--my,18%),rgba(99,102,241,.13),transparent 62%)}
+  .ambient{position:fixed;z-index:-1;pointer-events:none;border-radius:50%;filter:blur(75px);opacity:.3}
+  .ambient.a1{width:360px;height:360px;left:-140px;top:18%;background:#4f46e5;animation:auroraA 14s ease-in-out infinite alternate}
+  .ambient.a2{width:300px;height:300px;right:-120px;top:55%;background:#0891b2;animation:auroraB 17s ease-in-out infinite alternate}
+  .ambient.a3{width:240px;height:240px;left:42%;bottom:-140px;background:#7c3aed;animation:auroraA 19s ease-in-out -5s infinite alternate}
+  @keyframes auroraA{to{transform:translate3d(90px,-75px,0) scale(1.18);opacity:.46}}
+  @keyframes auroraB{to{transform:translate3d(-110px,60px,0) scale(.86);opacity:.42}}
+  header{padding:11px 22px}
+  .nav-inner{max-width:var(--canvas);gap:10px;flex-wrap:nowrap}
+  header h1{white-space:nowrap;letter-spacing:-.02em}
+  .tabs{background:rgba(11,18,34,.68);padding:3px}
+  .tab{padding:7px 15px;font-size:.88rem}
+  .addbox input{width:190px;background:rgba(8,15,29,.55)}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--purple-hi);outline-offset:2px}
+
+  .section-kicker{width:min(calc(100% - 44px),var(--canvas));margin:20px auto 8px;
+    display:flex;align-items:flex-end;justify-content:space-between;gap:16px}
+  .section-kicker .sk-copy{min-width:0}
+  .section-kicker .sk-eyebrow{color:var(--purple-hi);font-size:.7rem;font-weight:800;
+    letter-spacing:.12em;text-transform:uppercase;margin-bottom:3px}
+  .section-kicker h2{font-family:var(--font-heading);font-size:1.12rem;line-height:1.25}
+  .section-kicker p{color:var(--muted);font-size:.78rem;margin-top:2px}
+  .section-kicker .sk-status{display:flex;align-items:center;gap:7px;color:var(--green);
+    background:var(--green-bg);border:1px solid rgba(52,211,153,.24);border-radius:999px;
+    padding:5px 10px;font-size:.72rem;font-weight:700;white-space:nowrap}
+  .section-kicker .sk-status::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--green);
+    box-shadow:0 0 0 4px rgba(52,211,153,.1)}
+
+  #mktbar{width:min(calc(100% - 44px),var(--canvas));margin:0 auto;padding:0;
+    display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px}
+  .mk-item{min-width:0;padding:11px 13px;border-radius:16px;background:var(--surface);
+    box-shadow:0 8px 24px -16px rgba(0,0,0,.8)}
+  .mk-item:hover{background:var(--surface-hi)}
+  .mk-item{position:relative;overflow:hidden}
+  .mk-item::after{content:'';position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(105deg,transparent 25%,rgba(255,255,255,.07) 47%,transparent 69%);
+    transform:translateX(-130%);animation:marketSweep 8s ease-in-out infinite}
+  .mk-item:nth-child(2n)::after{animation-delay:-3s}.mk-item:nth-child(3n)::after{animation-delay:-5s}
+  @keyframes marketSweep{0%,72%{transform:translateX(-130%)}100%{transform:translateX(130%)}}
+  .mk-name{overflow:hidden;text-overflow:ellipsis}
+  .mk-px{font-size:1.02rem}
+  .mk-ta-hint{opacity:.68}
+  #mktTA,#mktTA:not(:empty){width:min(calc(100% - 44px),var(--canvas));margin:0 auto}
+  #mktTA{padding:0} #mktTA:not(:empty){padding:12px 0 0}
+
+  #hero,#introCard,#ovCard{width:min(calc(100% - 44px),var(--canvas));margin-left:auto;margin-right:auto}
+  #hero{margin-top:18px;padding:32px 36px;min-height:330px}
+  #hero::after{content:'';position:absolute;inset:-40%;z-index:1;pointer-events:none;
+    background:conic-gradient(from 180deg at 68% 50%,transparent,rgba(34,211,238,.09),transparent 22%,rgba(139,92,246,.1),transparent 48%);
+    animation:heroOrbit 18s linear infinite}
+  @keyframes heroOrbit{to{transform:rotate(360deg)}}
+  #hero .hero-vid{animation:heroDrift 14s ease-in-out infinite alternate;transform-origin:72% 50%}
+  @keyframes heroDrift{from{transform:scale(1.01)}to{transform:scale(1.085) translateX(-1.2%)}}
+  #hero h2{font-size:clamp(1.8rem,3.7vw,2.75rem);max-width:720px;line-height:1.08}
+  #hero p{font-size:.98rem;max-width:620px;line-height:1.7}
+  .hero-art{width:300px;opacity:.92}
+  .cta-btn{padding:14px 22px;margin-top:18px;min-width:195px}
+  .cta-btn{position:relative;overflow:hidden}
+  .cta-btn::before{content:'';position:absolute;top:-50%;bottom:-50%;width:42px;left:-70px;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.52),transparent);transform:rotate(18deg);
+    animation:ctaShine 3.8s ease-in-out infinite}
+  @keyframes ctaShine{0%,55%{left:-70px}85%,100%{left:calc(100% + 70px)}}
+  .src-badges span{color:#dce5f3;background:rgba(10,16,30,.38);border-color:rgba(255,255,255,.18)}
+
+  #watchHead{margin-top:24px;margin-bottom:0}
+  #portTabs,#portbar,#summary,.sortbar,#grid{width:min(calc(100% - 44px),var(--canvas));margin-left:auto;margin-right:auto}
+  #portTabs{padding:12px 0 0}
+  #portbar{padding-left:0;padding-right:0}
+  #summary{padding-left:0;padding-right:0}
+  .sortbar{padding-left:0;padding-right:0}
+  #grid{padding-left:0;padding-right:0}
+  .ptab{background:rgba(17,25,43,.72);padding:7px 16px}
+  .ptab.active{box-shadow:0 7px 20px -10px rgba(115,66,226,.9)}
+  #grid{grid-template-columns:repeat(auto-fill,minmax(370px,1fr));gap:14px;scroll-margin-top:128px}
+  .card{padding:20px;border-radius:20px;background:linear-gradient(145deg,rgba(25,35,57,.9),rgba(12,20,37,.84));
+    border-color:rgba(148,163,184,.13);box-shadow:0 16px 38px -24px rgba(0,0,0,.9)}
+  .card:hover{transform:translateY(-2px);border-color:rgba(129,140,248,.38);
+    box-shadow:0 22px 48px -25px rgba(0,0,0,.95),0 0 0 1px rgba(129,140,248,.07)}
+  .card,.lrow{animation:cardReveal .62s var(--ease-spring) both;animation-delay:var(--reveal,0ms)}
+  @keyframes cardReveal{from{opacity:0;transform:translateY(22px) scale(.975);filter:blur(5px)}to{opacity:1;transform:none;filter:none}}
+  .card::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;
+    background:radial-gradient(280px circle at var(--cx,50%) var(--cy,20%),rgba(129,140,248,.13),transparent 62%);
+    transition:opacity .25s ease}
+  .card:hover::before{opacity:1}
+  .card .tk{font-size:1.08rem}.card .price{font-size:1.78rem;letter-spacing:-.025em}
+  .card .sec-tag{margin-top:7px}
+  .card .meter{height:5px;margin:10px 0}
+  .levels{gap:7px}.lv{background:rgba(8,15,29,.45)}
+  .pill{background:rgba(17,25,43,.62);backdrop-filter:blur(10px)}
+  .sortbar{padding-top:12px;padding-bottom:4px;position:sticky;top:67px;z-index:8;
+    background:linear-gradient(180deg,rgba(10,17,32,.96),rgba(10,17,32,.82) 74%,transparent)}
+  #marketVisuals{width:min(calc(100% - 44px),var(--canvas));margin:12px auto 2px;display:none;
+    grid-template-columns:1.15fr 1fr 1fr;gap:12px}
+  .iv-card{position:relative;overflow:hidden;min-height:168px;padding:17px 18px;border-radius:18px;
+    background:linear-gradient(145deg,rgba(24,35,59,.9),rgba(9,17,32,.9));
+    border:1px solid rgba(148,163,184,.13);box-shadow:0 16px 36px -28px rgba(0,0,0,.95)}
+  .iv-card::after{content:'';position:absolute;width:130px;height:130px;border-radius:50%;right:-55px;top:-65px;
+    background:radial-gradient(circle,rgba(99,102,241,.2),transparent 68%);pointer-events:none}
+  .iv-kicker{font-size:.65rem;color:var(--purple-hi);font-weight:800;letter-spacing:.11em;text-transform:uppercase}
+  .iv-title{font-size:.94rem;font-weight:800;margin-top:3px}.iv-note{font-size:.68rem;color:var(--muted);margin-top:2px}
+  .mood-layout{display:flex;align-items:center;gap:17px;margin-top:12px}
+  .mood-ring{width:94px;height:94px;border-radius:50%;position:relative;flex:none;
+    display:grid;place-items:center;box-shadow:0 0 28px rgba(99,102,241,.12)}
+  .mood-ring::after{content:'';position:absolute;inset:12px;background:#111a2d;border-radius:50%;
+    border:1px solid rgba(255,255,255,.07)}
+  .mood-center{position:relative;z-index:1;text-align:center}.mood-center b{display:block;font-size:1.35rem;line-height:1}
+  .mood-center span{font-size:.58rem;color:var(--muted)}
+  .mood-legend{flex:1;display:grid;gap:6px}.mood-lg{display:flex;align-items:center;gap:7px;font-size:.72rem;color:var(--muted)}
+  .mood-lg i{width:8px;height:8px;border-radius:50%;flex:none}.mood-lg b{margin-left:auto;color:var(--text)}
+  .breadth{margin-top:15px;display:grid;gap:10px}.br-row{display:grid;grid-template-columns:68px 1fr 34px;align-items:center;gap:8px;
+    font-size:.7rem;color:var(--muted)}
+  .br-track{height:8px;border-radius:999px;background:rgba(148,163,184,.1);overflow:hidden}
+  .br-track i{display:block;height:100%;border-radius:inherit;box-shadow:0 0 10px currentColor}
+  .br-row b{text-align:right;color:var(--text);font-variant-numeric:tabular-nums}
+  .theme-cloud{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
+  .theme-chip{position:relative;overflow:hidden;flex:1 1 44%;min-width:110px;padding:9px 10px;border-radius:11px;
+    border:1px solid rgba(148,163,184,.11);background:rgba(8,15,29,.45)}
+  .theme-chip span{display:block;font-size:.66rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .theme-chip b{font-size:.85rem}.theme-chip i{position:absolute;left:0;bottom:0;height:2px;background:var(--purple-hi)}
+  .iv-card{transition:transform .35s var(--ease-spring),border-color .3s ease,box-shadow .3s ease}
+  .iv-card:hover{transform:translateY(-4px);border-color:rgba(129,140,248,.35);box-shadow:0 22px 48px -28px rgba(79,70,229,.65)}
+  .mood-ring{animation:ringIn .85s var(--ease-spring) both}
+  @keyframes ringIn{from{transform:scale(.65) rotate(-55deg);opacity:0}to{transform:none;opacity:1}}
+  .br-track i,.theme-chip i{animation:growBar .9s var(--ease-spring) both;transform-origin:left}
+  @keyframes growBar{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+  .spark-price{stroke-dasharray:520;stroke-dashoffset:520;animation:drawLine 1.15s var(--ease-spring) forwards}
+  @keyframes drawLine{to{stroke-dashoffset:0}}
+
+  @media(prefers-reduced-motion:reduce){
+    *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  }
+
+  @media(max-width:1280px){
+    .nav-inner{flex-wrap:wrap}
+    .spacer{display:none}
+    .addbox{margin-left:auto}
+    #authWrap{margin-left:auto}
+    .hero-art{width:240px}
+  }
+  @media(max-width:1050px){#mktbar{grid-template-columns:repeat(3,minmax(0,1fr))}}
+  @media(max-width:720px){
+    .section-kicker{width:calc(100% - 24px);margin-top:14px}
+    .section-kicker p,.section-kicker .sk-status{display:none}
+    #mktbar{width:calc(100% - 24px);display:flex;margin:0 auto;padding:0;
+      flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+    #mktbar::-webkit-scrollbar{display:none}
+    .mk-item{flex:0 0 158px;scroll-snap-align:start}
+    #mktTA,#mktTA:not(:empty),#hero,#introCard,#ovCard,#portTabs,#portbar,#summary,.sortbar,#grid{
+      width:calc(100% - 24px)}
+    #marketVisuals{width:calc(100% - 24px);grid-template-columns:1fr;gap:9px}
+    #portTabs{padding-left:0;padding-right:0}
+    #portbar,#summary,.sortbar,#grid{padding-left:0;padding-right:0}
+    #grid{grid-template-columns:1fr}
+    .spark{height:104px}
+    .sortbar{top:0}
+  }
 </style>
 </head>
 <body>
+<div class="ambient a1" aria-hidden="true"></div>
+<div class="ambient a2" aria-hidden="true"></div>
+<div class="ambient a3" aria-hidden="true"></div>
 
 <header>
  <div class="nav-inner">
@@ -1022,15 +1214,20 @@
   </button>
 </aside>
 
+<div class="section-kicker" id="marketHead">
+  <div class="sk-copy">
+    <div class="sk-eyebrow">Market pulse</div>
+    <h2>ภาพรวมตลาดวันนี้</h2>
+    <p>สินทรัพย์สำคัญที่ช่วยบอกอารมณ์ตลาดในภาพเดียว</p>
+  </div>
+  <div class="sk-status">ข้อมูลตลาดล่าสุด</div>
+</div>
 <div id="mktbar"><div class="mk-loading">🌍 กำลังโหลดราคาตลาดโลก...</div></div>
 <div id="mktTA"></div>
 <div id="fundOv" onclick="if(event.target===this)closeFund()"><div class="fd-wrap" id="fundBody"></div></div>
 
 <section id="hero">
-  <video class="hero-vid" autoplay muted loop playsinline preload="metadata" aria-hidden="true"
-    onerror="this.style.display='none'">
-    <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260518_003132_8b7edcb6-c64d-4a52-a9ca-879942e122ad.mp4" type="video/mp4">
-  </video>
+  <img class="hero-vid" src="/static/investing-hero-v2.png" alt="" aria-hidden="true">
   <div class="hero-ov"></div>
   <div class="hero-text">
     <h2 class="fade-up">วิเคราะห์หุ้นแม่นยำ
@@ -1110,6 +1307,13 @@
   <button class="btn-green" onclick="dismissIntro()">✅ เข้าใจแล้ว เริ่มเลย</button>
 </section>
 
+<div class="section-kicker" id="watchHead">
+  <div class="sk-copy">
+    <div class="sk-eyebrow">My workspace</div>
+    <h2>วอทช์ลิสต์และพอร์ตของฉัน</h2>
+    <p>ติดตามสัญญาณ จัดลำดับโอกาส และดูความเสี่ยงของหุ้นที่สนใจ</p>
+  </div>
+</div>
 <div id="portTabs"></div>
 
 <div id="ovCard">
@@ -1131,6 +1335,7 @@
   <span class="hint">ใช้คำนวณสัดส่วนแต่ละหุ้น — กรอกหน่วยเดียวกับมูลค่าถือครองในการ์ด (เช่น USD ทั้งคู่) · บันทึกในเบราว์เซอร์นี้</span>
 </div>
 <div id="summary"></div>
+<section id="marketVisuals" aria-label="อินโฟกราฟิกสรุปพอร์ต"></section>
 <div class="sortbar" id="sortbar" style="display:none">
   <span class="sb-lbl">🔽 เรียงตาม:</span>
   <button class="sb-btn on" data-sort="score" onclick="setSort('score')">🎯 คำแนะนำ</button>
@@ -2610,31 +2815,75 @@ let _sparkSeq = 0;
 function sparkSvg(r){
   const sp = r.spark;
   if(!Array.isArray(sp) || sp.length < 2 || sp.some(v => typeof v !== 'number' || !isFinite(v))) return '';
-  const W = 300, H = 36, PAD = 3;
+  const W = 300, H = 118, PL = 5, PR = 39, PT = 9, PB = 16;
   const min = Math.min(...sp), max = Math.max(...sp), span = (max - min) || 1;
   const n = sp.length;
-  const pts = sp.map((v,i)=>[ i/(n-1)*W, H-PAD - (v-min)/span*(H-PAD*2) ]);
+  const plotW = W-PL-PR, plotH = H-PT-PB;
+  const pts = sp.map((v,i)=>[ PL+i/(n-1)*plotW, PT+plotH-(v-min)/span*plotH ]);
   const line = pts.map((p,i)=>(i?'L':'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('');
+  const ma = sp.map((_,i)=>{
+    const vals = sp.slice(Math.max(0,i-4),i+1);
+    return vals.reduce((a,b)=>a+b,0)/vals.length;
+  });
+  const maPts = ma.map((v,i)=>[PL+i/(n-1)*plotW,PT+plotH-(v-min)/span*plotH]);
+  const maLine = maPts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join('');
   const chg = (sp[n-1] - sp[0]) / Math.abs(sp[0] || 1) * 100;
   const up = chg >= 0;
   const col = up ? 'var(--green)' : 'var(--red)';
   // id ต้องไม่ซ้ำ — การ์ดกับหน้ารวมข้อมูลอาจแสดงหุ้นตัวเดียวกันพร้อมกัน
   // ถ้าซ้ำ SVG จะไปใช้ gradient ของอันแรก ทำให้สีพื้นกราฟเพี้ยน
   const gid = 'sg-' + String(r.ticker).replace(/[^A-Za-z0-9]/g,'') + '-' + (++_sparkSeq);
-  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+  const grid = [0,.25,.5,.75,1].map((q,i)=>{
+    const y = PT+q*plotH, val=max-q*span;
+    return `<line class="spark-grid" x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}"/>
+      <text class="spark-axis" x="${W-PR+4}" y="${(y+3).toFixed(1)}">${fmt(val)}</text>`;
+  }).join('');
+  const values = sp.map(v=>Number(v).toFixed(4)).join(',');
+  return `<div class="spark-wrap" data-values="${values}" data-w="${W}" data-h="${H}"
+      data-pl="${PL}" data-pr="${PR}" data-pt="${PT}" data-pb="${PB}"
+      onpointermove="moveSparkTip(event,this)" onpointerleave="leaveSparkTip(this)">
+    <svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="กราฟราคา 30 วันของ ${escHtml(r.ticker)}">
     <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" style="stop-color:${col};stop-opacity:.26"/>
+      <stop offset="0" style="stop-color:${col};stop-opacity:.32"/>
       <stop offset="1" style="stop-color:${col};stop-opacity:0"/>
     </linearGradient></defs>
-    <path d="${line} L${W} ${H} L0 ${H} Z" fill="url(#${gid})"/>
-    <path d="${line}" fill="none" style="stroke:${col}" stroke-width="1.8"
+    ${grid}
+    <path d="${line} L${W-PR} ${H-PB} L${PL} ${H-PB} Z" fill="url(#${gid})"/>
+    <path d="${maLine}" class="spark-ma"/>
+    <path class="spark-price" d="${line}" fill="none" style="stroke:${col}" stroke-width="2"
       stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+    <line class="spark-guide" x1="${pts[n-1][0]}" y1="${PT}" x2="${pts[n-1][0]}" y2="${H-PB}"/>
+    <circle class="spark-dot" cx="${pts[n-1][0].toFixed(1)}" cy="${pts[n-1][1].toFixed(1)}" r="3"
+      style="fill:${col};color:${col}"/>
     <circle cx="${pts[n-1][0].toFixed(1)}" cy="${pts[n-1][1].toFixed(1)}" r="2.4"
       style="fill:${col};filter:drop-shadow(0 0 3px ${col})"/>
+    <text class="spark-axis" x="${PL}" y="${H-3}">30 วันก่อน</text>
+    <text class="spark-axis" x="${W-PR}" y="${H-3}" text-anchor="end">ล่าสุด</text>
   </svg>
-  <div class="spark-cap"><span>แนวโน้ม 30 วันล่าสุด</span>
-    <b class="${up?'up':'down'}">${up?'▲ +':'▼ '}${fmt(chg,1)}%</b></div>`;
+  <div class="spark-tip"><span>วันที่ 30</span><b>${fmt(sp[n-1])}</b></div>
+  <div class="spark-cap"><span class="spark-legend"><span><i style="background:${col}"></i>ราคา</span><span><i style="background:#a78bfa"></i>เฉลี่ย 5 วัน</span></span>
+    <b class="${up?'up':'down'}">30D ${up?'+':''}${fmt(chg,1)}%</b></div></div>`;
 }
+
+function moveSparkTip(ev, wrap){
+  const vals = String(wrap.dataset.values||'').split(',').map(Number).filter(Number.isFinite);
+  if(vals.length<2) return;
+  const svg = wrap.querySelector('svg.spark'), rect=svg.getBoundingClientRect();
+  const W=+wrap.dataset.w, H=+wrap.dataset.h, PL=+wrap.dataset.pl, PR=+wrap.dataset.pr;
+  const PT=+wrap.dataset.pt, PB=+wrap.dataset.pb, plotW=W-PL-PR, plotH=H-PT-PB;
+  const ux=Math.max(PL,Math.min(W-PR,(ev.clientX-rect.left)/rect.width*W));
+  const idx=Math.max(0,Math.min(vals.length-1,Math.round((ux-PL)/plotW*(vals.length-1))));
+  const lo=Math.min(...vals), hi=Math.max(...vals), span=(hi-lo)||1;
+  const x=PL+idx/(vals.length-1)*plotW, y=PT+plotH-(vals[idx]-lo)/span*plotH;
+  const guide=wrap.querySelector('.spark-guide'), dot=wrap.querySelector('.spark-dot');
+  guide.setAttribute('x1',x); guide.setAttribute('x2',x);
+  dot.setAttribute('cx',x); dot.setAttribute('cy',y);
+  const tip=wrap.querySelector('.spark-tip');
+  tip.style.left=(x/W*100)+'%';
+  tip.innerHTML=`<span>วันที่ ${idx+1} จาก ${vals.length}</span><b>${fmt(vals[idx])}</b>`;
+  wrap.classList.add('is-hover');
+}
+function leaveSparkTip(wrap){wrap.classList.remove('is-hover')}
 
 // ===== การ์ดต้อนรับมือใหม่ (โชว์เฉพาะครั้งแรก) =====
 function syncIntro(page){
@@ -3090,6 +3339,54 @@ function renderSummary(){
     <span class="pill time">💾 วอทช์ลิสต์ส่วนตัวของคุณ — บันทึกในเบราว์เซอร์นี้</span>`;
 }
 
+function renderInfographics(){
+  const box=document.getElementById('marketVisuals');
+  const rs=Object.values(results).filter(r=>!r.error);
+  if(!box || !rs.length){if(box) box.style.display='none';return}
+  const buy=rs.filter(r=>String(r.verdict).includes('BUY')).length;
+  const sell=rs.filter(r=>String(r.verdict).includes('SELL')).length;
+  const hold=rs.length-buy-sell, total=rs.length;
+  const bp=buy/total*100, hp=hold/total*100, sp=sell/total*100;
+  const mood=Math.round((buy-sell)/total*50+50);
+  const moodLabel=mood>=67?'เชิงบวก':mood<=33?'ระวัง':'สมดุล';
+  const changes=rs.map(r=>liveQuotes[r.ticker]?.chg ?? r.change_pct).filter(v=>v!=null&&isFinite(v));
+  const adv=changes.filter(v=>v>0).length, dec=changes.filter(v=>v<0).length, flat=changes.length-adv-dec;
+  const denom=Math.max(1,changes.length);
+  const oversold=rs.filter(r=>(r.rsi??50)<=35).length;
+  const hot=rs.filter(r=>(r.rsi??50)>=65).length;
+  const normal=total-oversold-hot;
+  const groups={}; rs.forEach(r=>{const g=themeOf(r);groups[g]=(groups[g]||0)+1});
+  const topThemes=Object.entries(groups).sort((a,b)=>b[1]-a[1]).slice(0,4);
+  const themeMax=Math.max(1,...topThemes.map(x=>x[1]));
+  const br=(label,n,color)=>`<div class="br-row"><span>${label}</span><div class="br-track"><i style="width:${n/denom*100}%;background:${color};color:${color}"></i></div><b>${n}</b></div>`;
+  box.innerHTML=`
+    <article class="iv-card">
+      <div class="iv-kicker">Signal map</div><div class="iv-title">อารมณ์ของวอทช์ลิสต์</div>
+      <div class="iv-note">สรุปจากคำแนะนำของหุ้นทั้งหมด ${total} ตัว</div>
+      <div class="mood-layout">
+        <div class="mood-ring" style="background:conic-gradient(var(--green) 0 ${bp}%,var(--yellow) ${bp}% ${bp+hp}%,var(--red) ${bp+hp}% 100%)">
+          <div class="mood-center"><b>${mood}</b><span>${moodLabel}</span></div></div>
+        <div class="mood-legend">
+          <div class="mood-lg"><i style="background:var(--green)"></i><span>ซื้อ/สะสม</span><b>${buy}</b></div>
+          <div class="mood-lg"><i style="background:var(--yellow)"></i><span>ถือ/รอดู</span><b>${hold}</b></div>
+          <div class="mood-lg"><i style="background:var(--red)"></i><span>ขาย/ลดพอร์ต</span><b>${sell}</b></div>
+        </div>
+      </div>
+    </article>
+    <article class="iv-card">
+      <div class="iv-kicker">Market breadth</div><div class="iv-title">หุ้นขึ้น–ลงวันนี้</div>
+      <div class="iv-note">ดูว่าแรงซื้อกระจายกว้างหรือกระจุกอยู่ไม่กี่ตัว</div>
+      <div class="breadth">${br('ปรับขึ้น',adv,'var(--green)')}${br('ทรงตัว',flat,'var(--yellow)')}${br('ปรับลง',dec,'var(--red)')}</div>
+      <div class="iv-note" style="margin-top:13px">RSI: ร้อนแรง ${hot} · กลาง ${normal} · เริ่มถูกขายมาก ${oversold}</div>
+    </article>
+    <article class="iv-card">
+      <div class="iv-kicker">Theme exposure</div><div class="iv-title">พอร์ตเน้นธีมไหน</div>
+      <div class="iv-note">จำนวนหุ้นแยกตามธีมการลงทุนหลัก</div>
+      <div class="theme-cloud">${topThemes.map(([name,n])=>`<div class="theme-chip"><span>${THEME_ICONS[name]||'◈'} ${escHtml(name)}</span><b>${n} ตัว</b><i style="width:${n/themeMax*100}%"></i></div>`).join('')}</div>
+    </article>`;
+  box.style.display='grid';
+}
+
 let sortMode = localStorage.getItem('sortMode') || 'score';
 
 // มุมมองการ์ด/รายการ — มือถือเริ่มที่ "รายการ" (เห็นหลายตัวพร้อมกัน), เดสก์ท็อปเริ่มที่ "การ์ด"
@@ -3256,6 +3553,14 @@ function render(){
   } else {
     grid.innerHTML = order.map(draw).join('');
   }
+  grid.querySelectorAll('.card,.lrow').forEach((el,i)=>{
+    el.style.setProperty('--reveal',Math.min(i,12)*42+'ms');
+    el.addEventListener('pointermove',ev=>{
+      const rc=el.getBoundingClientRect();
+      el.style.setProperty('--cx',((ev.clientX-rc.left)/rc.width*100).toFixed(1)+'%');
+      el.style.setProperty('--cy',((ev.clientY-rc.top)/rc.height*100).toFixed(1)+'%');
+    },{passive:true});
+  });
   const sb = document.getElementById('sortbar');
   if(sb){
     sb.style.display = all.length > 1 ? 'flex' : 'none';
@@ -3263,6 +3568,7 @@ function render(){
     sb.querySelectorAll('.vsw button').forEach(b=>b.classList.toggle('on', b.dataset.view === viewMode));
   }
   renderSummary();
+  renderInfographics();
   renderOverview();
 }
 
@@ -3349,11 +3655,15 @@ let calendarLoaded = false;
 function switchPage(page){
   syncIntro(page);
   document.getElementById('hero').style.display = page==='stocks' ? 'flex' : 'none';
+  document.getElementById('watchHead').style.display = page==='stocks' ? 'flex' : 'none';
   document.getElementById('portTabs').style.display = page==='stocks' ? 'flex' : 'none';
   document.getElementById('portbar').style.display = page==='stocks' ? 'flex' : 'none';
   if(page !== 'stocks') document.getElementById('ovCard').style.display = 'none';
   document.getElementById('summary').style.display = page==='stocks' ? 'flex' : 'none';
-  document.getElementById('grid').style.display = page==='stocks' ? 'grid' : 'none';
+  const visuals=document.getElementById('marketVisuals');
+  if(visuals) visuals.style.display = page==='stocks' && Object.keys(results).length ? 'grid' : 'none';
+  document.getElementById('sortbar').style.display = page==='stocks' ? 'flex' : 'none';
+  document.getElementById('grid').style.display = page==='stocks' ? '' : 'none';
   document.getElementById('page-news').style.display = page==='news' ? 'block' : 'none';
   document.getElementById('page-insider').style.display = page==='insider' ? 'block' : 'none';
   document.getElementById('page-calendar').style.display = page==='calendar' ? 'block' : 'none';
@@ -3377,7 +3687,7 @@ function toggleMenu(open){
 function goPage(p){ toggleMenu(false); switchPage(p); }
 function scrollToWatchlist(){
   switchPage('stocks');
-  const el = document.getElementById('grid');
+  const el = document.getElementById('watchHead');
   if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
 }
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') toggleMenu(false); });
@@ -3854,6 +4164,19 @@ function importPortFromUrl(){
   history.replaceState(null, '', location.pathname + location.search);   // ล้าง hash กันนำเข้าซ้ำ
   toast('✅ นำเข้า "' + ports[slot].name + '" เรียบร้อย (' + ports[slot].watchlist.length + ' ตัว)', 5000);
   return true;
+}
+
+// แสงบรรยากาศตอบสนองเมาส์แบบเบา ๆ — ปิดอัตโนมัติเมื่อผู้ใช้เลือก Reduce Motion
+if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
+  let glowTick=false;
+  addEventListener('pointermove',ev=>{
+    if(glowTick) return; glowTick=true;
+    requestAnimationFrame(()=>{
+      document.body.style.setProperty('--mx',(ev.clientX/innerWidth*100).toFixed(1)+'%');
+      document.body.style.setProperty('--my',(ev.clientY/innerHeight*100).toFixed(1)+'%');
+      glowTick=false;
+    });
+  },{passive:true});
 }
 
 (async ()=>{
