@@ -713,6 +713,34 @@ def _next_earnings_date(t):
     import yfinance as yf
     from datetime import date, datetime as dtm
     today = date.today()
+    # บั๊ก (เจอ 30 ก.ย. 2569 รอบเย็น): calendar["Earnings Date"] ของ yfinance แปลง timestamp เป็น
+    # "วันที่ตามโซนเวลาเครื่อง" (กรุงเทพฯ) งบหลังปิดตลาด 16:00 ET = 03:00 น. ไทยวันถัดไป จึงเลื่อนไป 1 วัน
+    # (MU งบ 30 ก.ย. 16:30 ET แต่ปฏิทินขึ้น 1 ต.ค.) → ใช้ info.earningsTimestampStart แปลงเป็นวันที่ตามเวลานิวยอร์กก่อน
+    try:
+        import pytz
+        tk = yf.Ticker(t)
+        ts = (tk.info or {}).get("earningsTimestampStart") or (tk.info or {}).get("earningsTimestamp")
+        if ts:
+            d_et = dtm.fromtimestamp(int(ts), pytz.timezone("America/New_York")).date()
+            if d_et >= today:
+                return str(d_et)
+    except Exception:
+        pass
+    # ทางสำรอง (เพิ่ม 3 ต.ค. 2569): บน Render ทั้ง info และ calendar (quoteSummary) โดนบล็อก
+    # ปฏิทินบนเว็บจึงไม่มีวันประกาศงบเลยสักตัว (ในเครื่อง 27 รายการ บนเว็บ 16) — ฟีด batch
+    # v7/finance/quote มี earningsTimestampStart เหมือนกันและเปิดให้ศูนย์ข้อมูลบ่อยกว่า
+    try:
+        import pytz
+        import investing_pro as core
+        q = (core.raw_quotes([t]) or {}).get(t.upper()) or {}
+        raw = q.get("_raw") or q
+        ts = raw.get("earningsTimestampStart") or raw.get("earningsTimestamp")
+        if ts:
+            d_et = dtm.fromtimestamp(int(ts), pytz.timezone("America/New_York")).date()
+            if d_et >= today:
+                return str(d_et)
+    except Exception:
+        pass
     try:
         cal = yf.Ticker(t).calendar or {}
         eds = cal.get("Earnings Date") or []

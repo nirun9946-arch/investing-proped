@@ -435,6 +435,10 @@ def api_market_ta(symbol):
                 "support", "resistance", "support_basis", "resistance_basis",
                 "atr", "score", "confidence", "confidence_label",
                 "verdict", "signals", "spark", "reversal", "prev_close",
+                # sess_prev = ฐานจริงของ change_pct (แก้ 3 ต.ค. 2569) — เดิมไม่ได้ส่งออก
+                # หลังตลาดปิด prev_close ของฟิวเจอร์ส = price (เป็นฐานของเซสชันถัดไป) ผู้อ่าน
+                # จึงเห็น prev_close == price แต่ change_pct −1.73% แล้วเข้าใจว่าเครื่องมือขัดกันเอง
+                "sess_prev", "macd_hist",
                 # asof/market_state ต้องส่งออกด้วย ผู้เรียกจะได้ตรวจได้ว่าข้อมูลเป็นของเซสชันไหน
                 "asof", "market_state",
                 "w52h", "w52l", "high_52w", "low_52w",

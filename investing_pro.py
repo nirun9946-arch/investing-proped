@@ -1502,18 +1502,134 @@ def raw_quotes(tickers):
         return {}
 
 
+_slow_base_cache = {}     # ticker -> (เวลา, ข้อมูลฐานรายวัน/ราย 1 ชม.) กันยิง Yahoo ทุกรอบ poll
+
+
+def _slow_daily(t, tk):
+    """แท่งรายวันราคากระดาน (ผ่านตัวกู้ชุดเดียวกับ prev_close) — แคช _PREV_TTL วินาที"""
+    now = time.time()
+    c = _slow_base_cache.get(("d", t))
+    if c and now - c[0] < _PREV_TTL:
+        return c[1]
+    h = tk.history(period="10d", interval="1d", auto_adjust=False)
+    h = _patch_unsettled_last_bar(tk, h)
+    h = _repair_thin_volume_bars(tk, h)
+    h = _fill_missing_session_bars(tk, h, auto_adjust=False)
+    if h is not None and not h.empty:
+        h = h.dropna(subset=["Close"])
+    _slow_base_cache[("d", t)] = (now, h)
+    return h
+
+
+def _slow_futures_rth(tk, t):
+    """แท่ง 16:00 ET ของฟิวเจอร์ส (มาตรฐานเดียวกับ _futures_prev_close) — แคช _PREV_TTL"""
+    now = time.time()
+    c = _slow_base_cache.get(("f", t))
+    if c and now - c[0] < _PREV_TTL:
+        return c[1]
+    h = tk.history(period="1mo", interval="1h", auto_adjust=False)
+    rth = None
+    if h is not None and not h.empty and "Close" in h:
+        h = h.dropna(subset=["Close"])
+        if "Volume" in h:
+            h = h[h["Volume"] > 0]
+        h = h.tz_convert("America/New_York") if getattr(h.index, "tz", None) is not None else h
+        rth = h[h.index.hour == 16]["Close"]
+    _slow_base_cache[("f", t)] = (now, rth)
+    return rth
+
+
 def _quote_one_slow(t):
-    """ทางสำรองรายตัว (แท่ง 1 นาทีล่าสุด) — ใช้เมื่อ batch ใช้ไม่ได้"""
+    """ทางสำรองรายตัว (แท่ง 1 นาทีล่าสุด) — ใช้เมื่อ batch ใช้ไม่ได้ (= ทุกครั้งบน Render)
+
+    บั๊ก (เจอ 3 ต.ค. 2569 ตอนเทียบเว็บออนไลน์กับในเครื่อง):
+    เดิมคืนแค่ price/chg โดย chg = ราคาสด ÷ prev_close() ซึ่งผิด 2 แบบ
+      1) ฟิวเจอร์ส/ค่าเงิน: หลังเซสชันจบหรือเสาร์-อาทิตย์ prev_close() เลื่อนไปเป็นราคาปิด
+         ของเซสชันที่เพิ่งจบ → แถบตลาดบนเว็บโชว์ ทอง/น้ำมัน/ES/NQ/บาท = 0.00% ทั้งวันเสาร์
+         ทั้งที่วันศุกร์ทอง −0.72% น้ำมัน −1.73% (ในเครื่องถูก เพราะใช้ batch)
+      2) หุ้น: price เป็นราคา after-hours แต่เทียบปิดของวันก่อน = ปน % ของ session กับ
+         after-hours เข้าด้วยกัน และไม่มี reg_price/reg_chg/state ให้หน้าเว็บแยกพาดหัว
+         (MU บนเว็บ −2.57% · ของจริง session −2.05% แล้ว after-hours −0.53%)
+    → คืนฟิลด์ชุดเดียวกับ _batch_quotes: เลือกฐานตาม "เซสชันของราคานั้น" ไม่ใช่ตามวันนี้
+    """
     try:
         tk = yf.Ticker(t)
-        h = tk.history(period="1d", interval="1m", prepost=True)
+        h = tk.history(period="5d", interval="1m", prepost=True)
         if h is None or h.empty:
             return None
+        h = h.dropna(subset=["Close"])
+        if h.empty:
+            return None
         last = float(h["Close"].iloc[-1])
-        prev = prev_close(t, tk)
-        return {"ticker": t, "price": last,
-                "chg": (last / prev - 1) * 100 if prev else None,
-                "ts": str(h.index[-1]), "prev_close": prev}
+        ts = h.index[-1]
+        out = {"ticker": t, "price": last, "ts": str(ts)}
+
+        if str(t).endswith("=F"):
+            # เซสชัน CME เปิด 18:00 ET จบ 17:00 ET วันถัดไป → ฐาน = ปิด 16:00 ของเซสชันก่อนหน้า
+            rth = _slow_futures_rth(tk, t)
+            tny = ts.tz_convert("America/New_York") if ts.tzinfo else ts
+            day = tny.normalize()
+            sess_start = day + pd.Timedelta(hours=18) if tny.hour >= 18                 else day - pd.Timedelta(days=1) + pd.Timedelta(hours=18)
+            prev = None
+            # ฐานหลัก = Close แท่งรายวันดิบของเซสชันก่อนหน้า (= settle ตรงกับ batch/สำนักข่าว:
+            # GC 4,202.3 · CL 92.87 วันที่ 1 ต.ค.) — ใช้เฉพาะแท่งที่วอลุ่มครบ เพราะแท่งที่
+            # วอลุ่มบางคือแท่งซาก/เซสชันกลางคืนที่ Yahoo ติดวันที่ผิด (ดู 5, 16 ก.ย. 2569)
+            try:
+                dd = tk.history(period="10d", interval="1d", auto_adjust=False).dropna(subset=["Close"])
+                sess_end = (sess_start + pd.Timedelta(days=1)).date()
+                rows = dd[[x.date() < sess_end and x.weekday() < 5 for x in dd.index]]
+                med = float(dd["Volume"].median()) if "Volume" in dd else 0.0
+                vmax = float(dd["Volume"].max()) if "Volume" in dd else 0.0
+                # ประตูเดียวกับ _futures_daily_from_hourly: max/median ≥ 10 = ทั้งชุดเป็นแท่งบาง
+                # (SI=F 3 ต.ค. 2569: ค่ากลาง 216 สัญญา แท่งพฤหัสฯ ปิด 60.725 ทั้งที่ settle 61.175)
+                if (not rows.empty and med > 0 and vmax / med < 10
+                        and float(rows["Volume"].iloc[-1]) >= 0.25 * med):
+                    prev = float(rows["Close"].iloc[-1])
+            except Exception:
+                prev = None
+            # สำรอง = ปิด 16:00 ET ของเซสชันก่อนหน้า จากแท่งราย 1 ชม.
+            if prev is None and rth is not None and not rth.empty:
+                before = rth[rth.index < sess_start]
+                if not before.empty:
+                    prev = float(before.iloc[-1])
+            if prev is None:
+                prev = prev_close(t, tk)
+            chg = (last / prev - 1) * 100 if prev else None
+            out.update({"chg": chg, "prev_close": prev, "chg_base": prev,
+                        "reg_price": last, "reg_chg": chg})
+            return out
+
+        d = _slow_daily(t, tk)
+        if d is None or d.empty:
+            return None
+        tz = getattr(d.index, "tz", None)
+        tl = ts.tz_convert(tz) if (tz is not None and ts.tzinfo) else ts
+        dates = [x.date() for x in d.index]
+        # หุ้นสหรัฐ (มี pre/post) — ดัชนี/ค่าเงิน/คริปโต/หุ้นต่างประเทศ ถือว่าเป็นราคา session เสมอ
+        us_equity = not any(c in str(t) for c in ("^", "=", "-", "."))
+        mins = tl.hour * 60 + tl.minute
+        in_regular = (not us_equity) or (tl.weekday() < 5 and 570 <= mins < 960)
+        if in_regular:
+            prior = [i for i, x in enumerate(dates) if x < tl.date()]
+            if not prior:
+                return None
+            prev = float(d["Close"].iloc[prior[-1]])
+            chg = (last / prev - 1) * 100
+            out.update({"chg": chg, "prev_close": prev, "chg_base": prev,
+                        "reg_price": last, "reg_chg": chg,
+                        "state": "REGULAR" if us_equity else None})
+            return out
+        # นอกเวลา: session ล่าสุดที่จบแล้ว (ก่อน 9:30 = ยังไม่มี session ของวันนี้)
+        cut = tl.date() if mins >= 960 or tl.weekday() >= 5 else None
+        idx = [i for i, x in enumerate(dates) if (x <= cut if cut else x < tl.date())]
+        if len(idx) < 2:
+            return None
+        reg = float(d["Close"].iloc[idx[-1]])
+        prev = float(d["Close"].iloc[idx[-2]])
+        out.update({"chg": (last / reg - 1) * 100, "chg_base": reg, "prev_close": prev,
+                    "reg_price": reg, "reg_chg": (reg / prev - 1) * 100,
+                    "state": "PRE" if (mins < 570 and tl.weekday() < 5) else "POST"})
+        return out
     except Exception:
         return None
 
@@ -1911,10 +2027,22 @@ def analyze(ticker, cfg):
         result["prev_close"] = float(df["Close"].iloc[-2])
     # เช็กสองขาแยกกัน (แก้ 14 ก.ย. 2569) — เดิมเติม w52l เฉพาะตอน w52h หาย
     # พอ Yahoo ให้ขาบนมาแต่ขาล่างเสีย (^TNX) ขาล่างจึงหลุดการเติมไป
-    if result["w52h"] is None and len(df) >= 30:
-        result["w52h"] = float(df["High"].tail(252).max())
-    if result["w52l"] is None and len(df) >= 30:
-        result["w52l"] = float(df["Low"].tail(252).min())
+    # บั๊ก (เจอ 3 ต.ค. 2569 เทียบเว็บออนไลน์): df เป็นราคา "ปรับปันผล" (auto_adjust=True)
+    # ETF ปันผลสูงอย่าง CHPY จึงได้กรอบ 35.25–79.54 บนเว็บ ทั้งที่ราคากระดานจริง 50.85–89.86
+    # (ในเครื่องได้ค่าถูกเพราะอ่านจาก Yahoo info ซึ่งบน Render โดนบล็อก)
+    # → เติมจากแท่งรายวันราคากระดาน ถ้าดึงไม่ได้ค่อยถอยไปใช้ df เหมือนเดิม
+    if (result["w52h"] is None or result["w52l"] is None) and len(df) >= 30:
+        hl = df
+        try:
+            u = tk.history(period="1y", interval="1d", auto_adjust=False)
+            if u is not None and len(u.dropna(subset=["High", "Low"])) >= 30:
+                hl = u.dropna(subset=["High", "Low"])
+        except Exception:
+            pass
+        if result["w52h"] is None:
+            result["w52h"] = float(hl["High"].tail(252).max())
+        if result["w52l"] is None:
+            result["w52l"] = float(hl["Low"].tail(252).min())
     # บั๊ก (เจอ 23 ก.ย. 2569 รอบรายงานเย็น): ฟิวเจอร์สที่โรลสัญญาแล้ว w52h/w52l มาจาก
     # Yahoo info ซึ่งเป็นชุดต่อเนื่อง "ไม่ปรับโรล" แต่ support/resistance คำนวณจาก df ที่
     # back-adjust แล้ว สองฟิลด์จึงอยู่คนละระดับราคา — NQ=F คืน resistance 31,271.57
